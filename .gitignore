@@ -1,0 +1,8 @@
+*.exe
+*.test
+*.prof
+*.swp
+/plural-api
+.env
+.idea/
+.vscode/

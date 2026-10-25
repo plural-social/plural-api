@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "plural",
+      "credentials": [{ "accessKey": "plural", "secretKey": "plural" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
