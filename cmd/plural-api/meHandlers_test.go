@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,12 +15,8 @@ import (
 )
 
 func Test_app_getMeEndpoint(t *testing.T) {
-	viewerStub := func(context.Context, []byte) (account.Viewer, error) {
-		return account.Viewer{UUID: testAccountUUID, Username: "alice", Role: account.RoleUser}, nil
-	}
-
 	type testCase struct {
-		header         string
+		request        *http.Request
 		accountStore   *accountStoreMock
 		expectedStatus int
 		expectedBody   map[string]any
@@ -31,28 +27,20 @@ func Test_app_getMeEndpoint(t *testing.T) {
 			t.Helper()
 			testCase.accountStore.T = t
 			a := &app{accountStore: testCase.accountStore, logger: zap.NewNop()}
-
-			request := httptest.NewRequest(http.MethodGet, "/me", nil)
-			if testCase.header != "" {
-				request.Header.Set("Authorization", testCase.header)
-			}
-			recorder := httptest.NewRecorder()
-			a.routes().ServeHTTP(recorder, request)
-
-			var actualBody map[string]any
-			expect.ErrorNil(t, json.Unmarshal(recorder.Body.Bytes(), &actualBody))
-			expect.Equal(t, recorder.Code, testCase.expectedStatus)
-			expect.Equal(t, actualBody, testCase.expectedBody)
+			status, body := serveJSON(t, a, testCase.request)
+			expect.Equal(t, status, testCase.expectedStatus)
+			expect.Equal(t, body, testCase.expectedBody)
 		})
 	}
 
 	run("Unauthenticated", testCase{
+		request:        httptest.NewRequest(http.MethodGet, "/me", nil),
 		accountStore:   &accountStoreMock{},
 		expectedStatus: http.StatusUnauthorized,
 		expectedBody:   map[string]any{"error": "authentication required", "type": account.ErrTypeUnauthenticated},
 	})
 	run("GetMeError", testCase{
-		header: "Bearer abc",
+		request: authedRequest(http.MethodGet, "/me", ""),
 		accountStore: &accountStoreMock{
 			GetViewerStub: viewerStub,
 			GetMeStub:     func(context.Context, uuid.UUID) (account.Me, error) { return account.Me{}, expect.ErrTest },
@@ -61,23 +49,127 @@ func Test_app_getMeEndpoint(t *testing.T) {
 		expectedBody:   map[string]any{"error": "internal server error"},
 	})
 	run("Success", testCase{
-		header: "Bearer abc",
+		request: authedRequest(http.MethodGet, "/me", ""),
 		accountStore: &accountStoreMock{
 			GetViewerStub: viewerStub,
 			GetMeStub: func(_ context.Context, accountUUID uuid.UUID) (account.Me, error) {
 				expect.Equal(t, accountUUID, testAccountUUID)
-				return account.Me{UUID: testAccountUUID, Username: "alice", Email: "alice@example.com", Role: account.RoleUser, CreatedAt: testCreatedAt}, nil
+				return testMe, nil
 			},
 		},
 		expectedStatus: http.StatusOK,
-		expectedBody: map[string]any{
-			"uuid":        testAccountUUID.String(),
-			"username":    "alice",
-			"displayName": "",
-			"email":       "alice@example.com",
-			"bio":         "",
-			"role":        "user",
-			"createdAt":   "2026-10-01T08:00:00Z",
+		expectedBody:   testMeJSON,
+	})
+}
+
+func Test_app_patchMeEndpoint(t *testing.T) {
+	validationError := func(field, message string) map[string]any {
+		return map[string]any{
+			"error":   "invalid request body",
+			"type":    account.ErrTypeValidation,
+			"details": map[string]any{field: message},
+		}
+	}
+
+	type testCase struct {
+		request        *http.Request
+		accountStore   *accountStoreMock
+		expectedStatus int
+		expectedBody   map[string]any
+	}
+	run := func(name string, testCase testCase) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			testCase.accountStore.T = t
+			a := &app{accountStore: testCase.accountStore, logger: zap.NewNop()}
+			status, body := serveJSON(t, a, testCase.request)
+			expect.Equal(t, status, testCase.expectedStatus)
+			expect.Equal(t, body, testCase.expectedBody)
+		})
+	}
+
+	run("Unauthenticated", testCase{
+		request:        httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"bio":"hi"}`)),
+		accountStore:   &accountStoreMock{},
+		expectedStatus: http.StatusUnauthorized,
+		expectedBody:   map[string]any{"error": "authentication required", "type": account.ErrTypeUnauthenticated},
+	})
+	run("MalformedJSON", testCase{
+		request:        authedRequest(http.MethodPatch, "/me", `{"bio":`),
+		accountStore:   &accountStoreMock{GetViewerStub: viewerStub},
+		expectedStatus: http.StatusBadRequest,
+		expectedBody:   map[string]any{"error": "decoding request body: unexpected EOF"},
+	})
+	run("NothingToUpdate", testCase{
+		request:        authedRequest(http.MethodPatch, "/me", `{}`),
+		accountStore:   &accountStoreMock{GetViewerStub: viewerStub},
+		expectedStatus: http.StatusBadRequest,
+		expectedBody:   validationError("body", "nothing to update"),
+	})
+	run("DisplayNameTooLong", testCase{
+		// 51 runes, 102 bytes: the limit counts characters, not bytes.
+		request:        authedRequest(http.MethodPatch, "/me", `{"displayName":"`+strings.Repeat("é", 51)+`"}`),
+		accountStore:   &accountStoreMock{GetViewerStub: viewerStub},
+		expectedStatus: http.StatusBadRequest,
+		expectedBody:   validationError("displayName", "must be at most 50 characters"),
+	})
+	run("DisplayNameNewline", testCase{
+		request:        authedRequest(http.MethodPatch, "/me", `{"displayName":"Bob\nB"}`),
+		accountStore:   &accountStoreMock{GetViewerStub: viewerStub},
+		expectedStatus: http.StatusBadRequest,
+		expectedBody:   validationError("displayName", "must be a single line"),
+	})
+	run("BioTooLong", testCase{
+		request:        authedRequest(http.MethodPatch, "/me", `{"bio":"`+strings.Repeat("a", 301)+`"}`),
+		accountStore:   &accountStoreMock{GetViewerStub: viewerStub},
+		expectedStatus: http.StatusBadRequest,
+		expectedBody:   validationError("bio", "must be at most 300 characters"),
+	})
+	run("UpdateError", testCase{
+		request: authedRequest(http.MethodPatch, "/me", `{"bio":"hi"}`),
+		accountStore: &accountStoreMock{
+			GetViewerStub:     viewerStub,
+			UpdateProfileStub: func(context.Context, uuid.UUID, account.ProfileUpdate) error { return expect.ErrTest },
 		},
+		expectedStatus: http.StatusInternalServerError,
+		expectedBody:   map[string]any{"error": "internal server error"},
+	})
+	run("GetMeError", testCase{
+		request: authedRequest(http.MethodPatch, "/me", `{"bio":"hi"}`),
+		accountStore: &accountStoreMock{
+			GetViewerStub:     viewerStub,
+			UpdateProfileStub: func(context.Context, uuid.UUID, account.ProfileUpdate) error { return nil },
+			GetMeStub:         func(context.Context, uuid.UUID) (account.Me, error) { return account.Me{}, expect.ErrTest },
+		},
+		expectedStatus: http.StatusInternalServerError,
+		expectedBody:   map[string]any{"error": "internal server error"},
+	})
+	run("OnlyBio", testCase{
+		request: authedRequest(http.MethodPatch, "/me", `{"bio":"hi"}`),
+		accountStore: &accountStoreMock{
+			GetViewerStub: viewerStub,
+			UpdateProfileStub: func(_ context.Context, _ uuid.UUID, update account.ProfileUpdate) error {
+				expect.Equal(t, update, account.ProfileUpdate{Bio: new("hi")})
+				return nil
+			},
+			GetMeStub: func(context.Context, uuid.UUID) (account.Me, error) { return testMe, nil },
+		},
+		expectedStatus: http.StatusOK,
+		expectedBody:   testMeJSON,
+	})
+	run("Success", testCase{
+		request: authedRequest(http.MethodPatch, "/me", `{"displayName":"  Bob B ","bio":" hi  "}`),
+		accountStore: &accountStoreMock{
+			GetViewerStub: viewerStub,
+			UpdateProfileStub: func(_ context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error {
+				expect.Equal(t, accountUUID, testAccountUUID)
+				expect.Equal(t, update, account.ProfileUpdate{DisplayName: new("Bob B"), Bio: new("hi")})
+				return nil
+			},
+			GetMeStub: func(context.Context, uuid.UUID) (account.Me, error) { return testMe, nil },
+		},
+		expectedStatus: http.StatusOK,
+		expectedBody:   testMeJSON,
 	})
 }

@@ -29,6 +29,10 @@ type accountStoreMock struct {
 	DeleteSessionCalled  int32
 	GetMeStub            func(ctx context.Context, accountUUID uuid.UUID) (account.Me, error)
 	GetMeCalled          int32
+	UpdateProfileStub    func(ctx context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error
+	UpdateProfileCalled  int32
+	GetProfileStub       func(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error)
+	GetProfileCalled     int32
 }
 
 // Verify that *accountStoreMock implements accountStore.
@@ -123,4 +127,30 @@ func (m *accountStoreMock) GetMe(ctx context.Context, accountUUID uuid.UUID) (ac
 		panic("GetMe unimplemented")
 	}
 	return m.GetMeStub(ctx, accountUUID)
+}
+
+// UpdateProfile is a stub for the accountStore.UpdateProfile
+// method that records the number of times it has been called.
+func (m *accountStoreMock) UpdateProfile(ctx context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error {
+	atomic.AddInt32(&m.UpdateProfileCalled, 1)
+	if m.UpdateProfileStub == nil {
+		if m.T != nil {
+			m.T.Error("UpdateProfileStub is nil")
+		}
+		panic("UpdateProfile unimplemented")
+	}
+	return m.UpdateProfileStub(ctx, accountUUID, update)
+}
+
+// GetProfile is a stub for the accountStore.GetProfile
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetProfile(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error) {
+	atomic.AddInt32(&m.GetProfileCalled, 1)
+	if m.GetProfileStub == nil {
+		if m.T != nil {
+			m.T.Error("GetProfileStub is nil")
+		}
+		panic("GetProfile unimplemented")
+	}
+	return m.GetProfileStub(ctx, username, viewerUUID)
 }

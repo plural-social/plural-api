@@ -42,6 +42,8 @@ Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 | `POST` | `/sessions` | Log in: `{"login","password"}` (username or email). Returns `{token,expiresAt,me}`. Rate limited per IP |
 | `DELETE` | `/sessions/current` | Log out (bearer token required) |
 | `GET` | `/me` | Current account (bearer token required) |
+| `PATCH` | `/me` | Update `{"displayName","bio"}`; omitted fields are unchanged |
+| `GET` | `/users/{username}` | Public profile. Token optional (sets `isSelf`) |
 
 `POST /accounts` is also rate limited per IP.
 

@@ -17,4 +17,6 @@ type accountStore interface {
 	GetViewer(ctx context.Context, tokenHash []byte) (account.Viewer, error)
 	DeleteSession(ctx context.Context, tokenHash []byte) error
 	GetMe(ctx context.Context, accountUUID uuid.UUID) (account.Me, error)
+	UpdateProfile(ctx context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error
+	GetProfile(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error)
 }

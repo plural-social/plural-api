@@ -15,6 +15,14 @@ import (
 
 const maxRequestBodyBytes = 1 << 20
 
+// Error types shared by every domain.
+const (
+	errTypeNotFound  = "notFound"
+	errTypeForbidden = "forbidden"
+)
+
+var errNotFound = ErrorResponse{Message: "not found", Type: errTypeNotFound}
+
 // handler returns a status code and a body that is encoded as JSON.
 type handler func(r *http.Request) (int, any)
 
@@ -57,6 +65,8 @@ func (a *app) handleError(err error) (int, any) {
 		return http.StatusConflict, ErrorResponse{Message: err.Error(), Type: account.ErrTypeUsernameConflict}
 	case errors.As(err, new(postgres.EmailConflictError)):
 		return http.StatusConflict, ErrorResponse{Message: err.Error(), Type: account.ErrTypeEmailConflict}
+	case errors.Is(err, postgres.ErrAccountNotFound):
+		return http.StatusNotFound, errNotFound
 	default:
 		a.logger.Error("Unhandled error", zap.Error(err))
 		return http.StatusInternalServerError, ErrorResponse{Message: "internal server error"}

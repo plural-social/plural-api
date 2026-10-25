@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/plural-social/plural-api/internal/account"
 )
 
@@ -69,22 +67,4 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
 		return fmt.Errorf("deleting session: %w", err)
 	}
 	return nil
-}
-
-func (s *Store) GetMe(ctx context.Context, accountUUID uuid.UUID) (account.Me, error) {
-	me := account.Me{Role: account.RoleUser}
-	err := s.db.QueryRowContext(ctx, `
-		SELECT uuid, username, email, created_at
-		FROM account
-		WHERE uuid = $1`,
-		accountUUID,
-	).Scan(&me.UUID, &me.Username, &me.Email, &me.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return account.Me{}, ErrAccountNotFound
-	}
-	if err != nil {
-		return account.Me{}, fmt.Errorf("getting account: %w", err)
-	}
-	me.CreatedAt = me.CreatedAt.UTC()
-	return me, nil
 }

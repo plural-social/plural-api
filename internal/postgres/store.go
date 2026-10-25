@@ -10,16 +10,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	pgxm "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib" // Registers the "pgx" database/sql driver.
-
-	"github.com/plural-social/plural-api/internal/account"
-)
-
-const (
-	accountUsernameUniqueConstraint = "account_username_key"
-	accountEmailUniqueConstraint    = "account_email_key"
 )
 
 //go:embed migrations/*.sql
@@ -85,31 +76,4 @@ func (s *Store) Ping(ctx context.Context) error {
 
 func (s *Store) Close() error {
 	return s.db.Close()
-}
-
-func (s *Store) InsertAccount(ctx context.Context, newAccount account.NewAccount) (account.Account, error) {
-	created := account.Account{Username: newAccount.Username}
-	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO account (username, email, password_hash)
-		VALUES ($1, $2, $3)
-		RETURNING uuid, created_at`,
-		newAccount.Username,
-		newAccount.Email,
-		newAccount.PasswordHash,
-	).Scan(&created.UUID, &created.CreatedAt)
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-		switch pgErr.ConstraintName {
-		case accountUsernameUniqueConstraint:
-			return account.Account{}, UsernameConflictError{Username: newAccount.Username}
-		case accountEmailUniqueConstraint:
-			return account.Account{}, EmailConflictError{}
-		}
-	}
-	if err != nil {
-		return account.Account{}, fmt.Errorf("inserting account: %w", err)
-	}
-	created.CreatedAt = created.CreatedAt.UTC()
-	return created, nil
 }

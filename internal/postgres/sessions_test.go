@@ -60,7 +60,10 @@ func Test_Store_sessions(t *testing.T) {
 		me, err := store.GetMe(ctx, created.UUID)
 		expect.ErrorNil(t, err)
 		expect.Equal(t, me, account.Me{
-			UUID: created.UUID, Username: username, Email: email, Role: account.RoleUser, CreatedAt: created.CreatedAt.UTC(),
+			UserSummary: account.UserSummary{UUID: created.UUID, Username: username},
+			Email:       email,
+			Role:        account.RoleUser,
+			CreatedAt:   created.CreatedAt,
 		})
 	})
 }

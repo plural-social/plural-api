@@ -119,6 +119,7 @@ func (a *app) routes() http.Handler {
 	a.setUpAccountRoutes(mux)
 	a.setUpSessionRoutes(mux)
 	a.setUpMeRoutes(mux)
+	a.setUpUserRoutes(mux)
 	return a.recoverPanics(a.logRequests(a.cors(mux)))
 }
 

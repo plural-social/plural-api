@@ -17,17 +17,10 @@ import (
 	"github.com/plural-social/plural-api/internal/postgres"
 )
 
-var (
-	testAccountUUID = uuid.MustParse("0bc5b194-85ce-4e49-96be-0c91916e90ac")
-	testNow         = time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
-	testCreatedAt   = time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
-)
-
 func Test_app_postSessionEndpoint(t *testing.T) {
 	passwordHash := expect.Must(account.HashPassword("password123"))(t)
 	validBody := `{"login":" Alice@Example.com ","password":"password123"}`
 	credentials := account.Credentials{AccountUUID: testAccountUUID, PasswordHash: passwordHash}
-	me := account.Me{UUID: testAccountUUID, Username: "alice", Email: "alice@example.com", Role: account.RoleUser, CreatedAt: testCreatedAt}
 
 	type testCase struct {
 		body           string
@@ -154,7 +147,7 @@ func Test_app_postSessionEndpoint(t *testing.T) {
 			},
 			GetMeStub: func(_ context.Context, accountUUID uuid.UUID) (account.Me, error) {
 				expect.Equal(t, accountUUID, testAccountUUID)
-				return me, nil
+				return testMe, nil
 			},
 		},
 		expectedStatus: http.StatusCreated,
@@ -163,24 +156,12 @@ func Test_app_postSessionEndpoint(t *testing.T) {
 			expect.Equal(t, len(token), 43)
 			expect.Equal(t, insertedHash, account.HashSessionToken(token))
 			expect.Equal[any](t, body["expiresAt"], "2027-01-23T12:00:00Z")
-			expect.Equal[any](t, body["me"], map[string]any{
-				"uuid":        testAccountUUID.String(),
-				"username":    "alice",
-				"displayName": "",
-				"email":       "alice@example.com",
-				"bio":         "",
-				"role":        "user",
-				"createdAt":   "2026-10-01T08:00:00Z",
-			})
+			expect.Equal[any](t, body["me"], testMeJSON)
 		},
 	})
 }
 
 func Test_app_deleteCurrentSessionEndpoint(t *testing.T) {
-	viewerStub := func(context.Context, []byte) (account.Viewer, error) {
-		return account.Viewer{UUID: testAccountUUID, Username: "alice", Role: account.RoleUser}, nil
-	}
-
 	type testCase struct {
 		header         string
 		accountStore   *accountStoreMock
