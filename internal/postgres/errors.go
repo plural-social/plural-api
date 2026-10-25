@@ -12,6 +12,8 @@ var (
 	ErrPostNotFound    = errors.New("post not found")
 	ErrCommentNotFound = errors.New("comment not found")
 
+	ErrInvalidAvatarMedia = errors.New("invalid avatar media")
+
 	ErrMediaAlreadyUsed = errors.New("media already used by another post")
 )
 

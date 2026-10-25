@@ -26,7 +26,7 @@ func (a *app) getUserEndpoint(r *http.Request, viewer *account.Viewer) (int, any
 	if err != nil {
 		return a.handleError(err)
 	}
-	return http.StatusOK, profile
+	return http.StatusOK, a.profileResponse(r, profile)
 }
 
 func (a *app) getUserPostsEndpoint(r *http.Request, viewer *account.Viewer) (int, any) {

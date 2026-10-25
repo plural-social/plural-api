@@ -26,6 +26,8 @@ type accountStore interface {
 	UpdateProfile(ctx context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error
 	GetProfile(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error)
 	GetAccountUUID(ctx context.Context, username string) (uuid.UUID, error)
+	SetAvatar(ctx context.Context, accountUUID, mediaUUID uuid.UUID) error
+	RemoveAvatar(ctx context.Context, accountUUID uuid.UUID) error
 }
 
 //go:generate go tool mock -o mediaStore_mock.go mediaStore

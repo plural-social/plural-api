@@ -14,6 +14,7 @@ import (
 	"github.com/plural-social/plural-api/internal/pagination"
 	"github.com/plural-social/plural-api/internal/post"
 	"github.com/plural-social/plural-api/internal/postgres"
+	"github.com/plural-social/plural-api/internal/social"
 )
 
 const maxRequestBodyBytes = 1 << 20
@@ -144,4 +145,27 @@ func viewerUUID(viewer *account.Viewer) *uuid.UUID {
 func parseUUIDPath(r *http.Request, name string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(r.PathValue(name))
 	return id, err == nil
+}
+
+// userSummary returns s with AvatarURL built from AvatarKey.
+func (a *app) userSummary(r *http.Request, s account.UserSummary) account.UserSummary {
+	s.AvatarURL = a.fileURL(r, s.AvatarKey)
+	return s
+}
+
+// meResponse, profileResponse and commentResponse are the only way handlers
+// return these types, so no response ships without its avatar URL.
+func (a *app) meResponse(r *http.Request, me account.Me) account.Me {
+	me.UserSummary = a.userSummary(r, me.UserSummary)
+	return me
+}
+
+func (a *app) profileResponse(r *http.Request, profile account.Profile) account.Profile {
+	profile.UserSummary = a.userSummary(r, profile.UserSummary)
+	return profile
+}
+
+func (a *app) commentResponse(r *http.Request, comment social.Comment) social.Comment {
+	comment.Author = a.userSummary(r, comment.Author)
+	return comment
 }

@@ -9,6 +9,8 @@ import (
 const (
 	DisplayNameMaxLength = 50
 	BioMaxLength         = 300
+
+	ErrTypeInvalidAvatarMedia = "invalidAvatarMedia"
 )
 
 // UserSummary is the short form of a user used inside posts, comments and lists.
@@ -17,6 +19,9 @@ type UserSummary struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"displayName"`
 	AvatarURL   string    `json:"avatarUrl,omitzero"`
+	// AvatarKey is the storage key of the avatar thumbnail. The store fills it;
+	// handlers turn it into AvatarURL (see app.userSummary).
+	AvatarKey string `json:"-"`
 }
 
 // Profile is the public view of a user. UserSummary is embedded so its fields
@@ -43,4 +48,8 @@ type UpdateMeRequest struct {
 type ProfileUpdate struct {
 	DisplayName *string
 	Bio         *string
+}
+
+type SetAvatarRequest struct {
+	MediaUUID string `json:"mediaUuid"`
 }

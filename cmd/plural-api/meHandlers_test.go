@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/plural-social/plural-api/internal/account"
+	"github.com/plural-social/plural-api/internal/media"
+	"github.com/plural-social/plural-api/internal/postgres"
 )
 
 func Test_app_getMeEndpoint(t *testing.T) {
@@ -171,5 +173,107 @@ func Test_app_patchMeEndpoint(t *testing.T) {
 		},
 		expectedStatus: http.StatusOK,
 		expectedBody:   testMeJSON,
+	})
+}
+
+// testAvatarKey is the thumbnail key of testMediaUUID, which the store would return for an avatar.
+var testAvatarKey = media.ThumbnailKey(testMediaUUID)
+
+func Test_app_putAvatarEndpoint(t *testing.T) {
+	body := `{"mediaUuid":"` + testMediaUUID.String() + `"}`
+	meWithAvatar := testMe
+	meWithAvatar.AvatarKey = testAvatarKey
+	expectedMe := map[string]any{}
+	for k, v := range testMeJSON {
+		expectedMe[k] = v
+	}
+	expectedMe["avatarUrl"] = "http://example.com/files/" + testAvatarKey
+
+	type testCase struct {
+		request        *http.Request
+		accountStore   *accountStoreMock
+		expectedStatus int
+		expectedBody   map[string]any
+	}
+	run := func(name string, testCase testCase) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			testCase.accountStore.T = t
+			testCase.accountStore.GetViewerStub = viewerStub
+			a := &app{accountStore: testCase.accountStore, logger: zap.NewNop()}
+			status, got := serveJSON(t, a, testCase.request)
+			expect.Equal(t, status, testCase.expectedStatus)
+			expect.Equal(t, got, testCase.expectedBody)
+		})
+	}
+
+	run("Unauthenticated", testCase{
+		request:        httptest.NewRequest(http.MethodPut, "/me/avatar", strings.NewReader(body)),
+		accountStore:   &accountStoreMock{},
+		expectedStatus: http.StatusUnauthorized,
+		expectedBody:   map[string]any{"error": "authentication required", "type": account.ErrTypeUnauthenticated},
+	})
+	run("InvalidUUID", testCase{
+		request:        authedRequest(http.MethodPut, "/me/avatar", `{"mediaUuid":"nope"}`),
+		accountStore:   &accountStoreMock{},
+		expectedStatus: http.StatusBadRequest,
+		expectedBody: map[string]any{
+			"error": "invalid request body", "type": "validation",
+			"details": map[string]any{"mediaUuid": "must be a valid UUID"},
+		},
+	})
+	run("InvalidMedia", testCase{
+		request: authedRequest(http.MethodPut, "/me/avatar", body),
+		accountStore: &accountStoreMock{SetAvatarStub: func(context.Context, uuid.UUID, uuid.UUID) error {
+			return postgres.ErrInvalidAvatarMedia
+		}},
+		expectedStatus: http.StatusUnprocessableEntity,
+		expectedBody: map[string]any{
+			"error": "use a ready image you uploaded that is not used by a post",
+			"type":  account.ErrTypeInvalidAvatarMedia,
+		},
+	})
+	run("SetError", testCase{
+		request: authedRequest(http.MethodPut, "/me/avatar", body),
+		accountStore: &accountStoreMock{SetAvatarStub: func(context.Context, uuid.UUID, uuid.UUID) error {
+			return expect.ErrTest
+		}},
+		expectedStatus: http.StatusInternalServerError,
+		expectedBody:   map[string]any{"error": "internal server error"},
+	})
+	run("Success", testCase{
+		request: authedRequest(http.MethodPut, "/me/avatar", body),
+		accountStore: &accountStoreMock{
+			SetAvatarStub: func(_ context.Context, accountUUID, mediaUUID uuid.UUID) error {
+				expect.Equal(t, accountUUID, testAccountUUID)
+				expect.Equal(t, mediaUUID, testMediaUUID)
+				return nil
+			},
+			GetMeStub: func(context.Context, uuid.UUID) (account.Me, error) { return meWithAvatar, nil },
+		},
+		expectedStatus: http.StatusOK,
+		expectedBody:   expectedMe,
+	})
+}
+
+func Test_app_deleteAvatarEndpoint(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		a := &app{
+			accountStore: &accountStoreMock{
+				T:             t,
+				GetViewerStub: viewerStub,
+				RemoveAvatarStub: func(_ context.Context, accountUUID uuid.UUID) error {
+					expect.Equal(t, accountUUID, testAccountUUID)
+					return nil
+				},
+				GetMeStub: func(context.Context, uuid.UUID) (account.Me, error) { return testMe, nil },
+			},
+			logger: zap.NewNop(),
+		}
+		status, got := serveJSON(t, a, authedRequest(http.MethodDelete, "/me/avatar", ""))
+		expect.Equal(t, status, http.StatusOK)
+		_, hasAvatar := got["avatarUrl"]
+		expect.Equal(t, hasAvatar, false)
 	})
 }

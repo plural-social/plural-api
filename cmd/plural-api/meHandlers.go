@@ -1,16 +1,22 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+
 	"github.com/plural-social/plural-api/internal/account"
+	"github.com/plural-social/plural-api/internal/postgres"
 )
 
 func (a *app) setUpMeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /me", a.endpoint(a.requireViewer(a.getMeEndpoint)))
 	mux.HandleFunc("PATCH /me", a.endpoint(a.requireViewer(a.patchMeEndpoint)))
+	mux.HandleFunc("PUT /me/avatar", a.endpoint(a.requireViewer(a.putAvatarEndpoint)))
+	mux.HandleFunc("DELETE /me/avatar", a.endpoint(a.requireViewer(a.deleteAvatarEndpoint)))
 }
 
 func (a *app) getMeEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
@@ -18,7 +24,7 @@ func (a *app) getMeEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
 	if err != nil {
 		return a.handleError(err)
 	}
-	return http.StatusOK, me
+	return http.StatusOK, a.meResponse(r, me)
 }
 
 func (a *app) patchMeEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
@@ -48,7 +54,52 @@ func (a *app) patchMeEndpoint(r *http.Request, viewer account.Viewer) (int, any)
 	if err != nil {
 		return a.handleError(err)
 	}
-	return http.StatusOK, me
+	return http.StatusOK, a.meResponse(r, me)
+}
+
+func (a *app) putAvatarEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
+	ctx := r.Context()
+
+	request, err := decodeJSONBody[account.SetAvatarRequest](r)
+	if err != nil {
+		return http.StatusBadRequest, ErrorResponse{Message: err.Error()}
+	}
+	mediaUUID, err := uuid.Parse(request.MediaUUID)
+	if err != nil {
+		return http.StatusBadRequest, ErrorResponse{
+			Message: "invalid request body",
+			Type:    account.ErrTypeValidation,
+			Details: map[string]any{"mediaUuid": "must be a valid UUID"},
+		}
+	}
+
+	err = a.accountStore.SetAvatar(ctx, viewer.UUID, mediaUUID)
+	if errors.Is(err, postgres.ErrInvalidAvatarMedia) {
+		return http.StatusUnprocessableEntity, ErrorResponse{
+			Message: "use a ready image you uploaded that is not used by a post",
+			Type:    account.ErrTypeInvalidAvatarMedia,
+		}
+	}
+	if err != nil {
+		return a.handleError(err)
+	}
+	return a.respondWithMe(r, viewer)
+}
+
+func (a *app) deleteAvatarEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
+	if err := a.accountStore.RemoveAvatar(r.Context(), viewer.UUID); err != nil {
+		return a.handleError(err)
+	}
+	return a.respondWithMe(r, viewer)
+}
+
+// respondWithMe reads the viewer's account back and returns it as a 200.
+func (a *app) respondWithMe(r *http.Request, viewer account.Viewer) (int, any) {
+	me, err := a.accountStore.GetMe(r.Context(), viewer.UUID)
+	if err != nil {
+		return a.handleError(err)
+	}
+	return http.StatusOK, a.meResponse(r, me)
 }
 
 func validateUpdateMeRequest(update account.ProfileUpdate) map[string]any {

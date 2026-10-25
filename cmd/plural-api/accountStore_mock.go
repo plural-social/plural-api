@@ -35,6 +35,10 @@ type accountStoreMock struct {
 	GetProfileCalled     int32
 	GetAccountUUIDStub   func(ctx context.Context, username string) (uuid.UUID, error)
 	GetAccountUUIDCalled int32
+	SetAvatarStub        func(ctx context.Context, accountUUID uuid.UUID, mediaUUID uuid.UUID) error
+	SetAvatarCalled      int32
+	RemoveAvatarStub     func(ctx context.Context, accountUUID uuid.UUID) error
+	RemoveAvatarCalled   int32
 }
 
 // Verify that *accountStoreMock implements accountStore.
@@ -168,4 +172,30 @@ func (m *accountStoreMock) GetAccountUUID(ctx context.Context, username string) 
 		panic("GetAccountUUID unimplemented")
 	}
 	return m.GetAccountUUIDStub(ctx, username)
+}
+
+// SetAvatar is a stub for the accountStore.SetAvatar
+// method that records the number of times it has been called.
+func (m *accountStoreMock) SetAvatar(ctx context.Context, accountUUID uuid.UUID, mediaUUID uuid.UUID) error {
+	atomic.AddInt32(&m.SetAvatarCalled, 1)
+	if m.SetAvatarStub == nil {
+		if m.T != nil {
+			m.T.Error("SetAvatarStub is nil")
+		}
+		panic("SetAvatar unimplemented")
+	}
+	return m.SetAvatarStub(ctx, accountUUID, mediaUUID)
+}
+
+// RemoveAvatar is a stub for the accountStore.RemoveAvatar
+// method that records the number of times it has been called.
+func (m *accountStoreMock) RemoveAvatar(ctx context.Context, accountUUID uuid.UUID) error {
+	atomic.AddInt32(&m.RemoveAvatarCalled, 1)
+	if m.RemoveAvatarStub == nil {
+		if m.T != nil {
+			m.T.Error("RemoveAvatarStub is nil")
+		}
+		panic("RemoveAvatar unimplemented")
+	}
+	return m.RemoveAvatarStub(ctx, accountUUID)
 }

@@ -75,7 +75,7 @@ func (a *app) postSessionEndpoint(r *http.Request) (int, any) {
 		return a.handleError(err)
 	}
 
-	return http.StatusCreated, account.SessionResponse{Token: token, ExpiresAt: expiresAt, Me: me}
+	return http.StatusCreated, account.SessionResponse{Token: token, ExpiresAt: expiresAt, Me: a.meResponse(r, me)}
 }
 
 func validateCreateSessionRequest(request account.CreateSessionRequest) map[string]any {

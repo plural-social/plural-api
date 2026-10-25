@@ -25,13 +25,14 @@ const postMediaUniqueConstraint = "post_media_uuid_key"
 // ponytail: counts are subqueries per row. Add counter columns when feeds get slow.
 const postSelect = `
 SELECT p.uuid, p.caption, p.created_at,
-	a.uuid, a.username, a.display_name,
+	a.uuid, a.username, a.display_name, ` + avatarColumn + `,
 	` + mediaColumns + `,
 	(SELECT COUNT(*) FROM post_like l WHERE l.post_uuid = p.uuid) AS like_count,
 	(SELECT COUNT(*) FROM comment c WHERE c.post_uuid = p.uuid AND c.deleted_at IS NULL) AS comment_count,
 	EXISTS (SELECT 1 FROM post_like l WHERE l.post_uuid = p.uuid AND l.account_uuid = $1) AS liked_by_me
 FROM post p
 JOIN account a ON a.uuid = p.account_uuid
+` + avatarJoin + `
 JOIN media m ON m.uuid = p.media_uuid
 `
 
@@ -47,7 +48,7 @@ type scanner interface {
 // scanPost scans the columns of postSelect.
 func scanPost(row scanner) (post.Post, error) {
 	var p post.Post
-	dest := []any{&p.UUID, &p.Caption, &p.CreatedAt, &p.Author.UUID, &p.Author.Username, &p.Author.DisplayName}
+	dest := []any{&p.UUID, &p.Caption, &p.CreatedAt, &p.Author.UUID, &p.Author.Username, &p.Author.DisplayName, &p.Author.AvatarKey}
 	dest = append(dest, mediaScanDest(&p.Media)...)
 	dest = append(dest, &p.LikeCount, &p.CommentCount, &p.LikedByMe)
 	if err := row.Scan(dest...); err != nil {
@@ -71,12 +72,17 @@ func (s *Store) InsertPost(ctx context.Context, newPost post.NewPost) (uuid.UUID
 	var postUUID uuid.UUID
 	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO post (account_uuid, media_uuid, caption)
-		VALUES ($1, $2, $3)
+		SELECT $1, $2, $3
+		WHERE NOT EXISTS (SELECT 1 FROM account WHERE avatar_media_uuid = $2)
 		RETURNING uuid`,
 		newPost.AccountUUID,
 		newPost.MediaUUID,
 		newPost.Caption,
 	).Scan(&postUUID)
+	// No row means the media is some account's avatar. Posts and avatars never share media.
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, ErrMediaAlreadyUsed
+	}
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation && pgErr.ConstraintName == postMediaUniqueConstraint {

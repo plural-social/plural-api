@@ -181,11 +181,13 @@ func Test_app_postPostEndpoint(t *testing.T) {
 			GetPostStub: func(_ context.Context, postUUID uuid.UUID, viewer *uuid.UUID) (post.Post, error) {
 				expect.Equal(t, postUUID, testPostUUID)
 				expect.Equal(t, viewer, &testAccountUUID)
-				return testPost(), nil
+				p := testPost()
+				p.Author.AvatarKey = testAvatarKey
+				return p, nil
 			},
 		},
 		expectedStatus: http.StatusCreated,
-		expectedBody:   testPostJSON(),
+		expectedBody:   withAuthorAvatar(testPostJSON(), "http://example.com/files/"+testAvatarKey),
 	})
 }
 
@@ -334,4 +336,11 @@ func Test_app_deletePostEndpoint(t *testing.T) {
 		expectedStatus: http.StatusNoContent,
 		expectedDelete: []string{deletable.DisplayKey, deletable.ThumbnailKey},
 	})
+}
+
+// withAuthorAvatar sets avatarUrl on the author of a decoded post body.
+func withAuthorAvatar(body map[string]any, url string) map[string]any {
+	author, _ := body["author"].(map[string]any)
+	author["avatarUrl"] = url
+	return body
 }

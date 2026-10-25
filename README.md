@@ -50,6 +50,8 @@ Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 | `DELETE` | `/sessions/current` | Log out (bearer token required) |
 | `GET` | `/me` | Current account (bearer token required) |
 | `PATCH` | `/me` | Update `{"displayName","bio"}`; omitted fields are unchanged |
+| `PUT` | `/me/avatar` | Set your avatar from your own ready image that no post uses: `{"mediaUuid"}`. Returns your account |
+| `DELETE` | `/me/avatar` | Remove your avatar |
 | `GET` | `/users/{username}` | Public profile. Token optional (sets `isSelf`) |
 
 `POST /accounts` is also rate limited per IP.
@@ -69,6 +71,8 @@ curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
 | `DELETE` | `/users/{username}/follow` | Unfollow (idempotent) |
 | `GET` | `/feed/following` | Posts by you and people you follow (bearer token required) |
 | `GET` | `/feed/explore` | All posts on this instance. Token optional |
+
+Every user (`author`, profile, `me`) includes `avatarUrl` when an avatar is set. It is the 480 px thumbnail.
 
 Feeds only contain posts whose media is ready, newest first, with the same `?limit=` and `?cursor=` paging as other lists.
 | `PUT` | `/posts/{uuid}/like` | Like a post (idempotent, bearer token required) |

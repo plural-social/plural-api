@@ -90,3 +90,7 @@ CREATE TABLE IF NOT EXISTS comment (
 	CONSTRAINT comment_account_fkey FOREIGN KEY (account_uuid) REFERENCES account (uuid) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS comment_post_created_idx ON comment (post_uuid, created_at DESC, uuid DESC) WHERE deleted_at IS NULL;
+
+ALTER TABLE account
+	ADD COLUMN IF NOT EXISTS avatar_media_uuid UUID NULL,
+	ADD CONSTRAINT account_avatar_media_fkey FOREIGN KEY (avatar_media_uuid) REFERENCES media (uuid) ON DELETE SET NULL;

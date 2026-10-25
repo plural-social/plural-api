@@ -27,7 +27,7 @@ func (a *app) setUpPostRoutes(mux *http.ServeMux) {
 func (a *app) postResponse(r *http.Request, p post.Post) post.Response {
 	return post.Response{
 		UUID:         p.UUID,
-		Author:       p.Author,
+		Author:       a.userSummary(r, p.Author),
 		Caption:      p.Caption,
 		Media:        a.mediaResponse(r, p.Media),
 		LikeCount:    p.LikeCount,

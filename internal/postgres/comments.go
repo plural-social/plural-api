@@ -14,10 +14,11 @@ import (
 
 const commentSelect = `
 SELECT c.uuid, c.post_uuid, c.body, c.created_at,
-	a.uuid, a.username, a.display_name,
+	a.uuid, a.username, a.display_name, ` + avatarColumn + `,
 	p.account_uuid
 FROM comment c
 JOIN account a ON a.uuid = c.account_uuid
+` + avatarJoin + `
 JOIN post p ON p.uuid = c.post_uuid
 `
 
@@ -26,7 +27,7 @@ func scanComment(row scanner) (social.Comment, error) {
 	var c social.Comment
 	err := row.Scan(
 		&c.UUID, &c.PostUUID, &c.Body, &c.CreatedAt,
-		&c.Author.UUID, &c.Author.Username, &c.Author.DisplayName,
+		&c.Author.UUID, &c.Author.Username, &c.Author.DisplayName, &c.Author.AvatarKey,
 		&c.PostAuthorUUID,
 	)
 	c.CreatedAt = c.CreatedAt.UTC()

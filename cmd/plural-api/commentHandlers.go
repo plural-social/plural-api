@@ -38,9 +38,13 @@ func (a *app) getCommentsEndpoint(r *http.Request, viewer *account.Viewer) (int,
 	if err != nil {
 		return a.handleError(err)
 	}
-	return http.StatusOK, pagination.NewPage(rows, limit, func(c social.Comment) pagination.Cursor {
+	page := pagination.NewPage(rows, limit, func(c social.Comment) pagination.Cursor {
 		return pagination.Cursor{CreatedAt: c.CreatedAt, UUID: c.UUID}
 	})
+	for i, comment := range page.Items {
+		page.Items[i] = a.commentResponse(r, comment)
+	}
+	return http.StatusOK, page
 }
 
 func (a *app) postCommentEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
@@ -78,7 +82,7 @@ func (a *app) postCommentEndpoint(r *http.Request, viewer account.Viewer) (int, 
 	if err != nil {
 		return a.handleError(err)
 	}
-	return http.StatusCreated, created
+	return http.StatusCreated, a.commentResponse(r, created)
 }
 
 func validateCreateCommentRequest(request social.CreateCommentRequest) map[string]any {
