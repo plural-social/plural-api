@@ -94,11 +94,15 @@ func (s *Store) GetProfile(ctx context.Context, username string, viewerUUID *uui
 		SELECT a.uuid, a.username, a.display_name, a.bio, a.created_at,
 			(SELECT COUNT(*) FROM post p JOIN media m ON m.uuid = p.media_uuid
 			 WHERE p.account_uuid = a.uuid AND p.deleted_at IS NULL
-				AND (m.status = 'ready' OR p.account_uuid = $2)) AS post_count
+				AND (m.status = 'ready' OR p.account_uuid = $2)) AS post_count,
+			(SELECT COUNT(*) FROM follow f WHERE f.followee_uuid = a.uuid) AS follower_count,
+			(SELECT COUNT(*) FROM follow f WHERE f.follower_uuid = a.uuid) AS following_count,
+			EXISTS (SELECT 1 FROM follow f WHERE f.follower_uuid = $2 AND f.followee_uuid = a.uuid) AS is_following
 		FROM account a
 		WHERE a.username = $1`,
 		username, viewerUUID,
-	).Scan(&profile.UUID, &profile.Username, &profile.DisplayName, &profile.Bio, &profile.CreatedAt, &profile.PostCount)
+	).Scan(&profile.UUID, &profile.Username, &profile.DisplayName, &profile.Bio, &profile.CreatedAt,
+		&profile.PostCount, &profile.FollowerCount, &profile.FollowingCount, &profile.IsFollowing)
 	if errors.Is(err, sql.ErrNoRows) {
 		return account.Profile{}, ErrAccountNotFound
 	}
@@ -108,4 +112,16 @@ func (s *Store) GetProfile(ctx context.Context, username string, viewerUUID *uui
 	profile.IsSelf = viewerUUID != nil && *viewerUUID == profile.UUID
 	profile.CreatedAt = profile.CreatedAt.UTC()
 	return profile, nil
+}
+
+func (s *Store) GetAccountUUID(ctx context.Context, username string) (uuid.UUID, error) {
+	var accountUUID uuid.UUID
+	err := s.db.QueryRowContext(ctx, `SELECT uuid FROM account WHERE username = $1`, username).Scan(&accountUUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, ErrAccountNotFound
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("getting account UUID: %w", err)
+	}
+	return accountUUID, nil
 }

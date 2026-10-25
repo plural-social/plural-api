@@ -19,6 +19,7 @@ into its own service later.
 ```bash
 make run        # start Postgres and SeaweedFS (S3) in Docker and run the API on :4100
 make test       # go test -cover -race ./...
+make seed       # add test users (alice, bob, carol; password123), posts and follows. Needs curl, jq, ffmpeg
 make generate   # regenerate mocks (//go:generate go tool mock ...)
 make fmt        # gofumpt
 ```
@@ -64,6 +65,12 @@ curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
 | `GET` | `/posts/{uuid}` | A post. Token optional |
 | `DELETE` | `/posts/{uuid}` | Delete your post and its files |
 | `GET` | `/users/{username}/posts` | A user's posts, newest first. `?limit=` (1-30) and `?cursor=` for paging |
+| `PUT` | `/users/{username}/follow` | Follow a user (idempotent, bearer token required) |
+| `DELETE` | `/users/{username}/follow` | Unfollow (idempotent) |
+| `GET` | `/feed/following` | Posts by you and people you follow (bearer token required) |
+| `GET` | `/feed/explore` | All posts on this instance. Token optional |
+
+Feeds only contain posts whose media is ready, newest first, with the same `?limit=` and `?cursor=` paging as other lists.
 
 ```bash
 curl -s -X POST localhost:4100/media -H "Authorization: Bearer $TOKEN" \

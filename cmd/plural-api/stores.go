@@ -24,6 +24,7 @@ type accountStore interface {
 	GetMe(ctx context.Context, accountUUID uuid.UUID) (account.Me, error)
 	UpdateProfile(ctx context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error
 	GetProfile(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error)
+	GetAccountUUID(ctx context.Context, username string) (uuid.UUID, error)
 }
 
 //go:generate go tool mock -o mediaStore_mock.go mediaStore
@@ -45,4 +46,12 @@ type postStore interface {
 	GetPost(ctx context.Context, postUUID uuid.UUID, viewerUUID *uuid.UUID) (post.Post, error)
 	ListUserPosts(ctx context.Context, accountUUID uuid.UUID, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error)
 	SoftDeletePost(ctx context.Context, postUUID, accountUUID uuid.UUID) (media.Media, error)
+}
+
+//go:generate go tool mock -o socialStore_mock.go socialStore
+type socialStore interface {
+	Follow(ctx context.Context, followerUUID, followeeUUID uuid.UUID) error
+	Unfollow(ctx context.Context, followerUUID, followeeUUID uuid.UUID) error
+	ListFollowingFeed(ctx context.Context, viewerUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error)
+	ListExploreFeed(ctx context.Context, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error)
 }

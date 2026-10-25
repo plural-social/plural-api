@@ -33,6 +33,8 @@ type accountStoreMock struct {
 	UpdateProfileCalled  int32
 	GetProfileStub       func(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error)
 	GetProfileCalled     int32
+	GetAccountUUIDStub   func(ctx context.Context, username string) (uuid.UUID, error)
+	GetAccountUUIDCalled int32
 }
 
 // Verify that *accountStoreMock implements accountStore.
@@ -153,4 +155,17 @@ func (m *accountStoreMock) GetProfile(ctx context.Context, username string, view
 		panic("GetProfile unimplemented")
 	}
 	return m.GetProfileStub(ctx, username, viewerUUID)
+}
+
+// GetAccountUUID is a stub for the accountStore.GetAccountUUID
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetAccountUUID(ctx context.Context, username string) (uuid.UUID, error) {
+	atomic.AddInt32(&m.GetAccountUUIDCalled, 1)
+	if m.GetAccountUUIDStub == nil {
+		if m.T != nil {
+			m.T.Error("GetAccountUUIDStub is nil")
+		}
+		panic("GetAccountUUID unimplemented")
+	}
+	return m.GetAccountUUIDStub(ctx, username)
 }

@@ -1,6 +1,6 @@
 COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
-.PHONY: build test generate fmt run
+.PHONY: build test generate fmt run seed
 
 build:
 	docker build \
@@ -20,3 +20,6 @@ fmt:
 run:
 	docker compose up -d postgres seaweedfs
 	go run ./cmd/plural-api
+
+seed:
+	./scripts/seed.sh

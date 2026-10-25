@@ -37,8 +37,9 @@ func (a *app) postResponse(r *http.Request, p post.Post) post.Response {
 	}
 }
 
-// postsPage converts a page of stored posts to a page of JSON posts.
-func (a *app) postsPage(r *http.Request, rows []post.Post, limit int) pagination.Page[post.Response] {
+// postPage converts up to limit+1 stored rows (as returned by list queries)
+// to a page of JSON posts, with a cursor when more rows exist.
+func (a *app) postPage(r *http.Request, rows []post.Post, limit int) pagination.Page[post.Response] {
 	page := pagination.NewPage(rows, limit, func(p post.Post) pagination.Cursor {
 		return pagination.Cursor{CreatedAt: p.CreatedAt, UUID: p.UUID}
 	})

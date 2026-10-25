@@ -14,6 +14,7 @@ import (
 	"github.com/plural-social/plural-api/internal/pagination"
 	"github.com/plural-social/plural-api/internal/post"
 	"github.com/plural-social/plural-api/internal/postgres"
+	"github.com/plural-social/plural-api/internal/social"
 )
 
 func Test_app_getUserEndpoint(t *testing.T) {
@@ -193,5 +194,140 @@ func Test_app_getUserPostsEndpoint(t *testing.T) {
 			expect.Equal(t, len(items), 2)
 			expect.Equal[any](t, body["nextCursor"], pagination.Encode(pagination.Cursor{CreatedAt: testCreatedAt, UUID: testPostUUID}))
 		},
+	})
+}
+
+func Test_app_putFollowEndpoint(t *testing.T) {
+	followee := uuid.MustParse("11111111-2222-3333-4444-555555555555")
+	byUsername := func(target uuid.UUID) func(context.Context, string) (uuid.UUID, error) {
+		return func(context.Context, string) (uuid.UUID, error) { return target, nil }
+	}
+
+	type testCase struct {
+		request        *http.Request
+		accountStore   *accountStoreMock
+		socialStore    *socialStoreMock
+		expectedStatus int
+		expectedBody   map[string]any
+	}
+	run := func(name string, testCase testCase) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			testCase.accountStore.T = t
+			testCase.accountStore.GetViewerStub = viewerStub
+			testCase.socialStore.T = t
+			a := &app{accountStore: testCase.accountStore, socialStore: testCase.socialStore, logger: zap.NewNop()}
+			status, body := serveJSON(t, a, testCase.request)
+			expect.Equal(t, status, testCase.expectedStatus)
+			expect.Equal(t, body, testCase.expectedBody)
+		})
+	}
+
+	run("Unauthenticated", testCase{
+		request:        httptest.NewRequest(http.MethodPut, "/users/bob/follow", nil),
+		accountStore:   &accountStoreMock{},
+		socialStore:    &socialStoreMock{},
+		expectedStatus: http.StatusUnauthorized,
+		expectedBody:   map[string]any{"error": "authentication required", "type": "unauthenticated"},
+	})
+	run("InvalidUsername", testCase{
+		request:        authedRequest(http.MethodPut, "/users/Bad-Name/follow", ""),
+		accountStore:   &accountStoreMock{},
+		socialStore:    &socialStoreMock{},
+		expectedStatus: http.StatusNotFound,
+		expectedBody:   map[string]any{"error": "not found", "type": errTypeNotFound},
+	})
+	run("UserNotFound", testCase{
+		request: authedRequest(http.MethodPut, "/users/nobody/follow", ""),
+		accountStore: &accountStoreMock{GetAccountUUIDStub: func(context.Context, string) (uuid.UUID, error) {
+			return uuid.Nil, postgres.ErrAccountNotFound
+		}},
+		socialStore:    &socialStoreMock{},
+		expectedStatus: http.StatusNotFound,
+		expectedBody:   map[string]any{"error": "not found", "type": errTypeNotFound},
+	})
+	run("Self", testCase{
+		request:        authedRequest(http.MethodPut, "/users/alice/follow", ""),
+		accountStore:   &accountStoreMock{GetAccountUUIDStub: byUsername(testAccountUUID)},
+		socialStore:    &socialStoreMock{},
+		expectedStatus: http.StatusUnprocessableEntity,
+		expectedBody:   map[string]any{"error": "you can't follow yourself", "type": social.ErrTypeCannotFollowSelf},
+	})
+	run("FollowError", testCase{
+		request:      authedRequest(http.MethodPut, "/users/bob/follow", ""),
+		accountStore: &accountStoreMock{GetAccountUUIDStub: byUsername(followee)},
+		socialStore: &socialStoreMock{FollowStub: func(context.Context, uuid.UUID, uuid.UUID) error {
+			return expect.ErrTest
+		}},
+		expectedStatus: http.StatusInternalServerError,
+		expectedBody:   map[string]any{"error": "internal server error"},
+	})
+	run("Success", testCase{
+		request:      authedRequest(http.MethodPut, "/users/bob/follow", ""),
+		accountStore: &accountStoreMock{GetAccountUUIDStub: byUsername(followee)},
+		socialStore: &socialStoreMock{FollowStub: func(_ context.Context, follower, got uuid.UUID) error {
+			expect.Equal(t, follower, testAccountUUID)
+			expect.Equal(t, got, followee)
+			return nil
+		}},
+		expectedStatus: http.StatusNoContent,
+	})
+}
+
+func Test_app_deleteFollowEndpoint(t *testing.T) {
+	followee := uuid.MustParse("11111111-2222-3333-4444-555555555555")
+	found := func(context.Context, string) (uuid.UUID, error) { return followee, nil }
+
+	type testCase struct {
+		request        *http.Request
+		accountStore   *accountStoreMock
+		socialStore    *socialStoreMock
+		expectedStatus int
+	}
+	run := func(name string, testCase testCase) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			testCase.accountStore.T = t
+			testCase.accountStore.GetViewerStub = viewerStub
+			testCase.socialStore.T = t
+			a := &app{accountStore: testCase.accountStore, socialStore: testCase.socialStore, logger: zap.NewNop()}
+			status, _ := serveJSON(t, a, testCase.request)
+			expect.Equal(t, status, testCase.expectedStatus)
+		})
+	}
+
+	run("Unauthenticated", testCase{
+		request:        httptest.NewRequest(http.MethodDelete, "/users/bob/follow", nil),
+		accountStore:   &accountStoreMock{},
+		socialStore:    &socialStoreMock{},
+		expectedStatus: http.StatusUnauthorized,
+	})
+	run("UserNotFound", testCase{
+		request: authedRequest(http.MethodDelete, "/users/nobody/follow", ""),
+		accountStore: &accountStoreMock{GetAccountUUIDStub: func(context.Context, string) (uuid.UUID, error) {
+			return uuid.Nil, postgres.ErrAccountNotFound
+		}},
+		socialStore:    &socialStoreMock{},
+		expectedStatus: http.StatusNotFound,
+	})
+	run("UnfollowError", testCase{
+		request:      authedRequest(http.MethodDelete, "/users/bob/follow", ""),
+		accountStore: &accountStoreMock{GetAccountUUIDStub: found},
+		socialStore: &socialStoreMock{UnfollowStub: func(context.Context, uuid.UUID, uuid.UUID) error {
+			return expect.ErrTest
+		}},
+		expectedStatus: http.StatusInternalServerError,
+	})
+	run("Success", testCase{
+		request:      authedRequest(http.MethodDelete, "/users/bob/follow", ""),
+		accountStore: &accountStoreMock{GetAccountUUIDStub: found},
+		socialStore: &socialStoreMock{UnfollowStub: func(_ context.Context, follower, got uuid.UUID) error {
+			expect.Equal(t, follower, testAccountUUID)
+			expect.Equal(t, got, followee)
+			return nil
+		}},
+		expectedStatus: http.StatusNoContent,
 	})
 }
