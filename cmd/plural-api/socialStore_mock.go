@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/plural-social/plural-api/internal/pagination"
 	"github.com/plural-social/plural-api/internal/post"
+	"github.com/plural-social/plural-api/internal/social"
 )
 
 // socialStoreMock is a mock implementation of the socialStore
@@ -24,6 +25,18 @@ type socialStoreMock struct {
 	ListFollowingFeedCalled int32
 	ListExploreFeedStub     func(ctx context.Context, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error)
 	ListExploreFeedCalled   int32
+	LikePostStub            func(ctx context.Context, postUUID uuid.UUID, accountUUID uuid.UUID) error
+	LikePostCalled          int32
+	UnlikePostStub          func(ctx context.Context, postUUID uuid.UUID, accountUUID uuid.UUID) error
+	UnlikePostCalled        int32
+	InsertCommentStub       func(ctx context.Context, newComment social.NewComment) (uuid.UUID, error)
+	InsertCommentCalled     int32
+	GetCommentStub          func(ctx context.Context, commentUUID uuid.UUID) (social.Comment, error)
+	GetCommentCalled        int32
+	ListCommentsStub        func(ctx context.Context, postUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]social.Comment, error)
+	ListCommentsCalled      int32
+	SoftDeleteCommentStub   func(ctx context.Context, commentUUID uuid.UUID) error
+	SoftDeleteCommentCalled int32
 }
 
 // Verify that *socialStoreMock implements socialStore.
@@ -79,4 +92,82 @@ func (m *socialStoreMock) ListExploreFeed(ctx context.Context, viewerUUID *uuid.
 		panic("ListExploreFeed unimplemented")
 	}
 	return m.ListExploreFeedStub(ctx, viewerUUID, cursor, limit)
+}
+
+// LikePost is a stub for the socialStore.LikePost
+// method that records the number of times it has been called.
+func (m *socialStoreMock) LikePost(ctx context.Context, postUUID uuid.UUID, accountUUID uuid.UUID) error {
+	atomic.AddInt32(&m.LikePostCalled, 1)
+	if m.LikePostStub == nil {
+		if m.T != nil {
+			m.T.Error("LikePostStub is nil")
+		}
+		panic("LikePost unimplemented")
+	}
+	return m.LikePostStub(ctx, postUUID, accountUUID)
+}
+
+// UnlikePost is a stub for the socialStore.UnlikePost
+// method that records the number of times it has been called.
+func (m *socialStoreMock) UnlikePost(ctx context.Context, postUUID uuid.UUID, accountUUID uuid.UUID) error {
+	atomic.AddInt32(&m.UnlikePostCalled, 1)
+	if m.UnlikePostStub == nil {
+		if m.T != nil {
+			m.T.Error("UnlikePostStub is nil")
+		}
+		panic("UnlikePost unimplemented")
+	}
+	return m.UnlikePostStub(ctx, postUUID, accountUUID)
+}
+
+// InsertComment is a stub for the socialStore.InsertComment
+// method that records the number of times it has been called.
+func (m *socialStoreMock) InsertComment(ctx context.Context, newComment social.NewComment) (uuid.UUID, error) {
+	atomic.AddInt32(&m.InsertCommentCalled, 1)
+	if m.InsertCommentStub == nil {
+		if m.T != nil {
+			m.T.Error("InsertCommentStub is nil")
+		}
+		panic("InsertComment unimplemented")
+	}
+	return m.InsertCommentStub(ctx, newComment)
+}
+
+// GetComment is a stub for the socialStore.GetComment
+// method that records the number of times it has been called.
+func (m *socialStoreMock) GetComment(ctx context.Context, commentUUID uuid.UUID) (social.Comment, error) {
+	atomic.AddInt32(&m.GetCommentCalled, 1)
+	if m.GetCommentStub == nil {
+		if m.T != nil {
+			m.T.Error("GetCommentStub is nil")
+		}
+		panic("GetComment unimplemented")
+	}
+	return m.GetCommentStub(ctx, commentUUID)
+}
+
+// ListComments is a stub for the socialStore.ListComments
+// method that records the number of times it has been called.
+func (m *socialStoreMock) ListComments(ctx context.Context, postUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]social.Comment, error) {
+	atomic.AddInt32(&m.ListCommentsCalled, 1)
+	if m.ListCommentsStub == nil {
+		if m.T != nil {
+			m.T.Error("ListCommentsStub is nil")
+		}
+		panic("ListComments unimplemented")
+	}
+	return m.ListCommentsStub(ctx, postUUID, cursor, limit)
+}
+
+// SoftDeleteComment is a stub for the socialStore.SoftDeleteComment
+// method that records the number of times it has been called.
+func (m *socialStoreMock) SoftDeleteComment(ctx context.Context, commentUUID uuid.UUID) error {
+	atomic.AddInt32(&m.SoftDeleteCommentCalled, 1)
+	if m.SoftDeleteCommentStub == nil {
+		if m.T != nil {
+			m.T.Error("SoftDeleteCommentStub is nil")
+		}
+		panic("SoftDeleteComment unimplemented")
+	}
+	return m.SoftDeleteCommentStub(ctx, commentUUID)
 }

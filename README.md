@@ -71,6 +71,13 @@ curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
 | `GET` | `/feed/explore` | All posts on this instance. Token optional |
 
 Feeds only contain posts whose media is ready, newest first, with the same `?limit=` and `?cursor=` paging as other lists.
+| `PUT` | `/posts/{uuid}/like` | Like a post (idempotent, bearer token required) |
+| `DELETE` | `/posts/{uuid}/like` | Remove your like |
+| `GET` | `/posts/{uuid}/comments` | Comments on a post, newest first. Token optional |
+| `POST` | `/posts/{uuid}/comments` | Comment: `{"body"}` (1-500 characters) |
+| `DELETE` | `/comments/{uuid}` | Delete a comment (its author or the post's author) |
+
+Post responses include `likeCount`, `commentCount` and `likedByMe`.
 
 ```bash
 curl -s -X POST localhost:4100/media -H "Authorization: Bearer $TOKEN" \

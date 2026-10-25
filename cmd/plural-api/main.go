@@ -173,6 +173,8 @@ func (a *app) routes() http.Handler {
 	a.setUpMediaRoutes(mux)
 	a.setUpPostRoutes(mux)
 	a.setUpFeedRoutes(mux)
+	a.setUpLikeRoutes(mux)
+	a.setUpCommentRoutes(mux)
 	return a.recoverPanics(a.logRequests(a.cors(mux)))
 }
 

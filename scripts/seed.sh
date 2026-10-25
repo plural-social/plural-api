@@ -47,4 +47,20 @@ follow alice bob
 follow bob alice
 follow carol alice
 
+# Each user likes every post by the people they follow. Likes are idempotent.
+like_posts_of() {
+  local liker=$1 author=$2
+  curl -sf "$API/users/$author/posts?limit=30" | jq -r '.items[].uuid' | while read -r post; do
+    curl -sf -o /dev/null -X PUT "$API/posts/$post/like" -H "Authorization: Bearer $(token "$liker")"
+  done
+}
+like_posts_of alice bob
+like_posts_of bob alice
+like_posts_of carol alice
+
+# Comments are not idempotent: every run adds another one.
+first_alice_post=$(curl -sf "$API/users/alice/posts?limit=30" | jq -r '.items[-1].uuid')
+curl -sf -o /dev/null -X POST "$API/posts/$first_alice_post/comments" \
+  -H "Authorization: Bearer $(token bob)" -d '{"body":"nice one"}'
+
 echo "Seeded ${#USERS[@]} users (${USERS[*]}), password '$PASSWORD', $posts new posts."

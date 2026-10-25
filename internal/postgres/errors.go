@@ -10,6 +10,7 @@ var (
 	ErrSessionNotFound = errors.New("session not found")
 	ErrMediaNotFound   = errors.New("media not found")
 	ErrPostNotFound    = errors.New("post not found")
+	ErrCommentNotFound = errors.New("comment not found")
 
 	ErrMediaAlreadyUsed = errors.New("media already used by another post")
 )

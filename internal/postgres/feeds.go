@@ -33,15 +33,15 @@ func (s *Store) ListFollowingFeed(ctx context.Context, viewerUUID uuid.UUID, cur
 }
 
 // ListExploreFeed returns every ready post on the instance, newest first, up
-// to limit+1 rows. viewerUUID is unused until likes (F09) need it.
-func (s *Store) ListExploreFeed(ctx context.Context, _ *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error) {
+// to limit+1 rows. viewerUUID only fills likedByMe.
+func (s *Store) ListExploreFeed(ctx context.Context, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error) {
 	cursorTime, cursorUUID := cursorArgs(cursor)
 	rows, err := s.db.QueryContext(ctx, postSelect+`
 		WHERE p.deleted_at IS NULL AND m.status = 'ready'
-			AND ($1::timestamptz IS NULL OR (p.created_at, p.uuid) < ($1, $2))
+			AND ($2::timestamptz IS NULL OR (p.created_at, p.uuid) < ($2, $3))
 		ORDER BY p.created_at DESC, p.uuid DESC
-		LIMIT $3`,
-		cursorTime, cursorUUID, limit+1,
+		LIMIT $4`,
+		viewerUUID, cursorTime, cursorUUID, limit+1,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing explore feed: %w", err)

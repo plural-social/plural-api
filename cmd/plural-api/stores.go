@@ -11,6 +11,7 @@ import (
 	"github.com/plural-social/plural-api/internal/media"
 	"github.com/plural-social/plural-api/internal/pagination"
 	"github.com/plural-social/plural-api/internal/post"
+	"github.com/plural-social/plural-api/internal/social"
 )
 
 //go:generate go tool mock -o accountStore_mock.go accountStore
@@ -54,4 +55,10 @@ type socialStore interface {
 	Unfollow(ctx context.Context, followerUUID, followeeUUID uuid.UUID) error
 	ListFollowingFeed(ctx context.Context, viewerUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error)
 	ListExploreFeed(ctx context.Context, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error)
+	LikePost(ctx context.Context, postUUID, accountUUID uuid.UUID) error
+	UnlikePost(ctx context.Context, postUUID, accountUUID uuid.UUID) error
+	InsertComment(ctx context.Context, newComment social.NewComment) (uuid.UUID, error)
+	GetComment(ctx context.Context, commentUUID uuid.UUID) (social.Comment, error)
+	ListComments(ctx context.Context, postUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]social.Comment, error)
+	SoftDeleteComment(ctx context.Context, commentUUID uuid.UUID) error
 }

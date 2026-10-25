@@ -19,12 +19,17 @@ import (
 const postMediaUniqueConstraint = "post_media_uuid_key"
 
 // postSelect returns one row per post. Every query built on it uses $1 for the
-// viewer UUID (or NULL for anonymous). Later features extend this one query,
-// so post columns are never listed anywhere else.
+// viewer UUID (or NULL for anonymous), then its own values from $2. Later
+// features extend this one query, so post columns are never listed anywhere else.
+//
+// ponytail: counts are subqueries per row. Add counter columns when feeds get slow.
 const postSelect = `
 SELECT p.uuid, p.caption, p.created_at,
 	a.uuid, a.username, a.display_name,
-	` + mediaColumns + `
+	` + mediaColumns + `,
+	(SELECT COUNT(*) FROM post_like l WHERE l.post_uuid = p.uuid) AS like_count,
+	(SELECT COUNT(*) FROM comment c WHERE c.post_uuid = p.uuid AND c.deleted_at IS NULL) AS comment_count,
+	EXISTS (SELECT 1 FROM post_like l WHERE l.post_uuid = p.uuid AND l.account_uuid = $1) AS liked_by_me
 FROM post p
 JOIN account a ON a.uuid = p.account_uuid
 JOIN media m ON m.uuid = p.media_uuid
@@ -43,7 +48,9 @@ type scanner interface {
 func scanPost(row scanner) (post.Post, error) {
 	var p post.Post
 	dest := []any{&p.UUID, &p.Caption, &p.CreatedAt, &p.Author.UUID, &p.Author.Username, &p.Author.DisplayName}
-	if err := row.Scan(append(dest, mediaScanDest(&p.Media)...)...); err != nil {
+	dest = append(dest, mediaScanDest(&p.Media)...)
+	dest = append(dest, &p.LikeCount, &p.CommentCount, &p.LikedByMe)
+	if err := row.Scan(dest...); err != nil {
 		return post.Post{}, err
 	}
 	p.CreatedAt = p.CreatedAt.UTC()
