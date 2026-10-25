@@ -17,7 +17,7 @@ into its own service later.
 ## Development
 
 ```bash
-make run        # start Postgres in Docker and run the API on :4100
+make run        # start Postgres and SeaweedFS (S3) in Docker and run the API on :4100
 make test       # go test -cover -race ./...
 make generate   # regenerate mocks (//go:generate go tool mock ...)
 make fmt        # gofumpt
@@ -28,7 +28,13 @@ make fmt        # gofumpt
 | `-cors.origins` | `http://localhost:8081` | Comma-separated allowed browser origins; `*` allows any |
 | `-instance.domain` | `localhost` | Public domain of this instance |
 | `-instance.name` | `Plural` | Display name of this instance |
-| `-trust.proxy.headers` | `false` | Use `X-Forwarded-For` for client IPs (rate limits). Only behind a proxy that sets it |
+| `-trust.proxy.headers` | `false` | Use `X-Forwarded-For` / `X-Forwarded-Proto` (rate limits, file URLs). Only behind a proxy that sets them |
+| `-public.url` | empty | Base URL for file links. Empty builds links from the request host |
+| `-s3.endpoint` | `localhost:8333` | S3-compatible storage (`host:port`, no scheme) |
+| `-s3.access.key` / `-s3.secret.key` | `plural` | S3 credentials |
+| `-s3.bucket` | `plural-media` | Bucket, created on startup if missing |
+| `-s3.region` | `us-east-1` | S3 region |
+| `-s3.use.ssl` | `false` | Use HTTPS to reach S3 |
 
 Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 
@@ -51,3 +57,17 @@ Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 curl -s -X POST localhost:4100/sessions -d '{"login":"alice","password":"password123"}'
 curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
 ```
+| `POST` | `/media` | Upload an image as raw bytes (`Content-Type: image/jpeg\|png\|webp`, max 20 MB). Re-encoded to a 2048 px display JPEG and a 480 px thumbnail; all metadata (incl. GPS) is dropped. Rate limited |
+| `GET` | `/media/{uuid}` | Your own media item (bearer token required) |
+| `GET` | `/files/{key...}` | Stored files under `media/`, with HTTP range support |
+
+```bash
+curl -s -X POST localhost:4100/media -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: image/jpeg' --data-binary @photo.jpg
+```
+
+## Storage
+
+Files live in any S3-compatible service. Development uses SeaweedFS (compose).
+Keys: `media/<uuid>/display.jpg`, `media/<uuid>/thumb.jpg`. Keys never change
+content, so `/files` responses are cached for a year.

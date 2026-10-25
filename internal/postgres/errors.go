@@ -8,6 +8,7 @@ import (
 var (
 	ErrAccountNotFound = errors.New("account not found")
 	ErrSessionNotFound = errors.New("session not found")
+	ErrMediaNotFound   = errors.New("media not found")
 )
 
 type UsernameConflictError struct {

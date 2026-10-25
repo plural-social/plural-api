@@ -18,5 +18,5 @@ fmt:
 	go tool gofumpt -l -w .
 
 run:
-	docker compose up -d postgres
+	docker compose up -d postgres seaweedfs
 	go run ./cmd/plural-api

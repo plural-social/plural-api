@@ -13,25 +13,43 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3"
 	"go.uber.org/zap"
 
+	"github.com/plural-social/plural-api/internal/blob"
+	"github.com/plural-social/plural-api/internal/media"
 	"github.com/plural-social/plural-api/internal/postgres"
 )
 
 var version = "dev"
 
+// app holds every dependency the HTTP handlers use. Tests build it with mocks
+// and only the fields the code under test needs.
 type app struct {
-	accountStore   accountStore
-	logger         *zap.Logger
-	corsOrigins    []string
-	instanceDomain string
-	instanceName   string
-	now            func() time.Time
+	logger *zap.Logger
 
+	// Stores
+	accountStore accountStore
+	mediaStore   mediaStore
+	blobStore    blobStore
+
+	// Configuration
+	corsOrigins       []string
+	instanceDomain    string
+	instanceName      string
+	publicURL         string
 	trustProxyHeaders bool
-	sessionLimiter    *ipRateLimiter
-	signupLimiter     *ipRateLimiter
+	maxImageBytes     int64
+
+	// Replaceable in tests
+	now     func() time.Time
+	newUUID func() uuid.UUID
+
+	// Per-IP rate limiters. Nil disables the limit.
+	sessionLimiter *ipRateLimiter
+	signupLimiter  *ipRateLimiter
+	uploadLimiter  *ipRateLimiter
 }
 
 func main() {
@@ -43,7 +61,14 @@ func main() {
 		corsOrigins     = flag.String("cors.origins", "http://localhost:8081", "Comma-separated list of allowed browser origins; * allows any")
 		instanceDomain  = flag.String("instance.domain", "localhost", "Public domain of this instance")
 		instanceName    = flag.String("instance.name", "Plural", "Display name of this instance")
-		trustProxy      = flag.Bool("trust.proxy.headers", false, "Trust X-Forwarded-For for client IPs (only behind a proxy that sets it)")
+		trustProxy      = flag.Bool("trust.proxy.headers", false, "Trust X-Forwarded-For and X-Forwarded-Proto (only behind a proxy that sets them)")
+		publicURL       = flag.String("public.url", "", "Public base URL for file links, e.g. https://plural.example. Empty uses the request host")
+		s3Endpoint      = flag.String("s3.endpoint", "localhost:8333", "S3-compatible storage endpoint (host:port, no scheme)")
+		s3AccessKey     = flag.String("s3.access.key", "plural", "S3 access key")
+		s3SecretKey     = flag.String("s3.secret.key", "plural", "S3 secret key")
+		s3Bucket        = flag.String("s3.bucket", "plural-media", "S3 bucket for media files")
+		s3Region        = flag.String("s3.region", "us-east-1", "S3 region")
+		s3UseSSL        = flag.Bool("s3.use.ssl", false, "Use HTTPS to reach S3")
 	)
 
 	if err := ff.Parse(flag.CommandLine, os.Args[1:], ff.WithEnvVars()); err != nil {
@@ -65,17 +90,38 @@ func main() {
 		logger.Fatal("Error initializing store", zap.Error(err))
 	}
 
-	a := &app{
-		accountStore:   store,
-		logger:         logger,
-		corsOrigins:    splitOrigins(*corsOrigins),
-		instanceDomain: *instanceDomain,
-		instanceName:   *instanceName,
-		now:            time.Now,
+	blobStore, err := blob.New(ctx, blob.Config{
+		Endpoint:  *s3Endpoint,
+		AccessKey: *s3AccessKey,
+		SecretKey: *s3SecretKey,
+		Bucket:    *s3Bucket,
+		Region:    *s3Region,
+		UseSSL:    *s3UseSSL,
+	})
+	if err != nil {
+		logger.Fatal("Error initializing blob store", zap.Error(err))
+	}
 
+	a := &app{
+		logger: logger,
+
+		accountStore: store,
+		mediaStore:   store,
+		blobStore:    blobStore,
+
+		corsOrigins:       splitOrigins(*corsOrigins),
+		instanceDomain:    *instanceDomain,
+		instanceName:      *instanceName,
+		publicURL:         strings.TrimSuffix(*publicURL, "/"),
 		trustProxyHeaders: *trustProxy,
-		sessionLimiter:    newIPRateLimiter(6*time.Second, 10),
-		signupLimiter:     newIPRateLimiter(12*time.Minute, 5),
+		maxImageBytes:     media.ImageMaxBytes,
+
+		now:     time.Now,
+		newUUID: uuid.New,
+
+		sessionLimiter: newIPRateLimiter(6*time.Second, 10),
+		signupLimiter:  newIPRateLimiter(12*time.Minute, 5),
+		uploadLimiter:  newIPRateLimiter(10*time.Second, 30),
 	}
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", *port),
@@ -120,6 +166,7 @@ func (a *app) routes() http.Handler {
 	a.setUpSessionRoutes(mux)
 	a.setUpMeRoutes(mux)
 	a.setUpUserRoutes(mux)
+	a.setUpMediaRoutes(mux)
 	return a.recoverPanics(a.logRequests(a.cors(mux)))
 }
 
