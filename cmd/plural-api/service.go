@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/plural-social/plural-api/internal/account"
 	"github.com/plural-social/plural-api/internal/media"
 	"github.com/plural-social/plural-api/internal/pagination"
+	"github.com/plural-social/plural-api/internal/post"
 	"github.com/plural-social/plural-api/internal/postgres"
 )
 
@@ -66,8 +68,12 @@ func (a *app) handleError(err error) (int, any) {
 		return http.StatusConflict, ErrorResponse{Message: err.Error(), Type: account.ErrTypeUsernameConflict}
 	case errors.As(err, new(postgres.EmailConflictError)):
 		return http.StatusConflict, ErrorResponse{Message: err.Error(), Type: account.ErrTypeEmailConflict}
-	case errors.Is(err, postgres.ErrAccountNotFound), errors.Is(err, postgres.ErrMediaNotFound):
+	case errors.Is(err, postgres.ErrAccountNotFound),
+		errors.Is(err, postgres.ErrMediaNotFound),
+		errors.Is(err, postgres.ErrPostNotFound):
 		return http.StatusNotFound, errNotFound
+	case errors.Is(err, postgres.ErrMediaAlreadyUsed):
+		return http.StatusConflict, ErrorResponse{Message: "media already used by another post", Type: post.ErrTypeMediaAlreadyUsed}
 	default:
 		a.logger.Error("Unhandled error", zap.Error(err))
 		return http.StatusInternalServerError, ErrorResponse{Message: "internal server error"}
@@ -123,4 +129,18 @@ func (a *app) mediaResponse(r *http.Request, m media.Media) media.Response {
 		response.ThumbnailURL = a.fileURL(r, m.ThumbnailKey)
 	}
 	return response
+}
+
+// viewerUUID returns nil for anonymous requests.
+func viewerUUID(viewer *account.Viewer) *uuid.UUID {
+	if viewer == nil {
+		return nil
+	}
+	return &viewer.UUID
+}
+
+// parseUUIDPath reads a path value as a UUID. ok is false when it is not one.
+func parseUUIDPath(r *http.Request, name string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(r.PathValue(name))
+	return id, err == nil
 }

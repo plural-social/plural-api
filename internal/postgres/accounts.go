@@ -91,11 +91,14 @@ func (s *Store) UpdateProfile(ctx context.Context, accountUUID uuid.UUID, update
 func (s *Store) GetProfile(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error) {
 	var profile account.Profile
 	err := s.db.QueryRowContext(ctx, `
-		SELECT uuid, username, display_name, bio, created_at
-		FROM account
-		WHERE username = $1`,
-		username,
-	).Scan(&profile.UUID, &profile.Username, &profile.DisplayName, &profile.Bio, &profile.CreatedAt)
+		SELECT a.uuid, a.username, a.display_name, a.bio, a.created_at,
+			(SELECT COUNT(*) FROM post p JOIN media m ON m.uuid = p.media_uuid
+			 WHERE p.account_uuid = a.uuid AND p.deleted_at IS NULL
+				AND (m.status = 'ready' OR p.account_uuid = $2)) AS post_count
+		FROM account a
+		WHERE a.username = $1`,
+		username, viewerUUID,
+	).Scan(&profile.UUID, &profile.Username, &profile.DisplayName, &profile.Bio, &profile.CreatedAt, &profile.PostCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return account.Profile{}, ErrAccountNotFound
 	}

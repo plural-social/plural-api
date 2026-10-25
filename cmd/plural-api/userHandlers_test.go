@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/plural-social/plural-api/internal/account"
+	"github.com/plural-social/plural-api/internal/pagination"
+	"github.com/plural-social/plural-api/internal/post"
 	"github.com/plural-social/plural-api/internal/postgres"
 )
 
@@ -102,5 +104,94 @@ func Test_app_getUserEndpoint(t *testing.T) {
 		},
 		expectedStatus: http.StatusOK,
 		expectedBody:   profileJSON,
+	})
+}
+
+func Test_app_getUserPostsEndpoint(t *testing.T) {
+	cursor := pagination.Cursor{CreatedAt: testCreatedAt, UUID: testPostUUID}
+	profile := account.Profile{UserSummary: account.UserSummary{UUID: testAccountUUID, Username: "alice"}}
+	profileStub := func(context.Context, string, *uuid.UUID) (account.Profile, error) { return profile, nil }
+
+	type testCase struct {
+		path           string
+		accountStore   *accountStoreMock
+		postStore      *postStoreMock
+		expectedStatus int
+		check          func(t *testing.T, body map[string]any)
+	}
+	run := func(name string, testCase testCase) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			testCase.accountStore.T = t
+			testCase.postStore.T = t
+			a := &app{accountStore: testCase.accountStore, postStore: testCase.postStore, logger: zap.NewNop()}
+			status, body := serveJSON(t, a, httptest.NewRequest(http.MethodGet, testCase.path, nil))
+			expect.Equal(t, status, testCase.expectedStatus)
+			if testCase.check != nil {
+				testCase.check(t, body)
+			}
+		})
+	}
+
+	run("InvalidUsername", testCase{
+		path: "/users/Bad-Name/posts", accountStore: &accountStoreMock{}, postStore: &postStoreMock{},
+		expectedStatus: http.StatusNotFound,
+	})
+	run("InvalidCursor", testCase{
+		path: "/users/alice/posts?cursor=%21%21", accountStore: &accountStoreMock{}, postStore: &postStoreMock{},
+		expectedStatus: http.StatusBadRequest,
+		check: func(t *testing.T, body map[string]any) {
+			expect.Equal[any](t, body["type"], pagination.ErrTypeInvalidPagination)
+		},
+	})
+	run("InvalidLimit", testCase{
+		path: "/users/alice/posts?limit=99", accountStore: &accountStoreMock{}, postStore: &postStoreMock{},
+		expectedStatus: http.StatusBadRequest,
+	})
+	run("UserNotFound", testCase{
+		path: "/users/nobody/posts",
+		accountStore: &accountStoreMock{GetProfileStub: func(context.Context, string, *uuid.UUID) (account.Profile, error) {
+			return account.Profile{}, postgres.ErrAccountNotFound
+		}},
+		postStore:      &postStoreMock{},
+		expectedStatus: http.StatusNotFound,
+	})
+	run("ListError", testCase{
+		path:         "/users/alice/posts",
+		accountStore: &accountStoreMock{GetProfileStub: profileStub},
+		postStore: &postStoreMock{ListUserPostsStub: func(context.Context, uuid.UUID, *uuid.UUID, pagination.Cursor, int) ([]post.Post, error) {
+			return nil, expect.ErrTest
+		}},
+		expectedStatus: http.StatusInternalServerError,
+	})
+	run("Empty", testCase{
+		path:         "/users/alice/posts",
+		accountStore: &accountStoreMock{GetProfileStub: profileStub},
+		postStore: &postStoreMock{ListUserPostsStub: func(context.Context, uuid.UUID, *uuid.UUID, pagination.Cursor, int) ([]post.Post, error) {
+			return nil, nil
+		}},
+		expectedStatus: http.StatusOK,
+		check: func(t *testing.T, body map[string]any) {
+			expect.Equal[any](t, body, map[string]any{"items": []any{}})
+		},
+	})
+	run("MoreThanLimit", testCase{
+		path:         "/users/alice/posts?limit=2&cursor=" + pagination.Encode(cursor),
+		accountStore: &accountStoreMock{GetProfileStub: profileStub},
+		postStore: &postStoreMock{ListUserPostsStub: func(_ context.Context, accountUUID uuid.UUID, viewer *uuid.UUID, got pagination.Cursor, limit int) ([]post.Post, error) {
+			expect.Equal(t, accountUUID, testAccountUUID)
+			expect.Equal(t, viewer, nil)
+			expect.Equal(t, got, cursor)
+			expect.Equal(t, limit, 2)
+			// The store returns limit+1 rows; the handler drops the extra one.
+			return []post.Post{testPost(), testPost(), testPost()}, nil
+		}},
+		expectedStatus: http.StatusOK,
+		check: func(t *testing.T, body map[string]any) {
+			items, _ := body["items"].([]any)
+			expect.Equal(t, len(items), 2)
+			expect.Equal[any](t, body["nextCursor"], pagination.Encode(pagination.Cursor{CreatedAt: testCreatedAt, UUID: testPostUUID}))
+		},
 	})
 }

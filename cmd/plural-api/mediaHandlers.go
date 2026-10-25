@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/plural-social/plural-api/internal/account"
@@ -107,8 +106,8 @@ func (a *app) deleteBlobs(ctx context.Context, keys ...string) {
 
 // getMediaEndpoint only shows media to its owner: unattached media is private.
 func (a *app) getMediaEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
-	mediaUUID, err := uuid.Parse(r.PathValue("uuid"))
-	if err != nil {
+	mediaUUID, ok := parseUUIDPath(r, "uuid")
+	if !ok {
 		return http.StatusNotFound, errNotFound
 	}
 	m, err := a.mediaStore.GetMedia(r.Context(), mediaUUID)

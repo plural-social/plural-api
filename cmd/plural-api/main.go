@@ -32,6 +32,7 @@ type app struct {
 	// Stores
 	accountStore accountStore
 	mediaStore   mediaStore
+	postStore    postStore
 	blobStore    blobStore
 
 	// Configuration
@@ -107,6 +108,7 @@ func main() {
 
 		accountStore: store,
 		mediaStore:   store,
+		postStore:    store,
 		blobStore:    blobStore,
 
 		corsOrigins:       splitOrigins(*corsOrigins),
@@ -167,6 +169,7 @@ func (a *app) routes() http.Handler {
 	a.setUpMeRoutes(mux)
 	a.setUpUserRoutes(mux)
 	a.setUpMediaRoutes(mux)
+	a.setUpPostRoutes(mux)
 	return a.recoverPanics(a.logRequests(a.cors(mux)))
 }
 

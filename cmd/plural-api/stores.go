@@ -9,6 +9,8 @@ import (
 	"github.com/plural-social/plural-api/internal/account"
 	"github.com/plural-social/plural-api/internal/blob"
 	"github.com/plural-social/plural-api/internal/media"
+	"github.com/plural-social/plural-api/internal/pagination"
+	"github.com/plural-social/plural-api/internal/post"
 )
 
 //go:generate go tool mock -o accountStore_mock.go accountStore
@@ -35,4 +37,12 @@ type blobStore interface {
 	Put(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
 	Get(ctx context.Context, key string) (*blob.Object, error)
 	Delete(ctx context.Context, key string) error
+}
+
+//go:generate go tool mock -o postStore_mock.go postStore
+type postStore interface {
+	InsertPost(ctx context.Context, newPost post.NewPost) (uuid.UUID, error)
+	GetPost(ctx context.Context, postUUID uuid.UUID, viewerUUID *uuid.UUID) (post.Post, error)
+	ListUserPosts(ctx context.Context, accountUUID uuid.UUID, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error)
+	SoftDeletePost(ctx context.Context, postUUID, accountUUID uuid.UUID) (media.Media, error)
 }

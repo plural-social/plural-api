@@ -15,6 +15,8 @@ import (
 	"github.com/nicheinc/expect"
 
 	"github.com/plural-social/plural-api/internal/account"
+	"github.com/plural-social/plural-api/internal/media"
+	"github.com/plural-social/plural-api/internal/post"
 )
 
 var (
@@ -61,4 +63,44 @@ func authedRequest(method, target, body string) *http.Request {
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer abc")
 	return request
+}
+
+var testPostUUID = uuid.MustParse("7a2b9f10-3c4d-4e5f-8a6b-1c2d3e4f5a6b")
+
+// testPost is a ready image post by alice.
+func testPost() post.Post {
+	return post.Post{
+		UUID:      testPostUUID,
+		Caption:   "first post",
+		CreatedAt: testCreatedAt,
+		Author:    account.UserSummary{UUID: testAccountUUID, Username: "alice"},
+		Media: media.Media{
+			UUID: testMediaUUID, AccountUUID: testAccountUUID, Kind: media.KindImage, Status: media.StatusReady,
+			DisplayKey: media.DisplayKey(testMediaUUID), ThumbnailKey: media.ThumbnailKey(testMediaUUID),
+			Width: 40, Height: 20,
+		},
+	}
+}
+
+// testPostJSON is testPost as a decoded response body.
+func testPostJSON() map[string]any {
+	return map[string]any{
+		"uuid":         testPostUUID.String(),
+		"author":       map[string]any{"uuid": testAccountUUID.String(), "username": "alice", "displayName": ""},
+		"caption":      "first post",
+		"likeCount":    0.0,
+		"commentCount": 0.0,
+		"likedByMe":    false,
+		"createdAt":    "2026-10-01T08:00:00Z",
+		"media": map[string]any{
+			"uuid":         testMediaUUID.String(),
+			"kind":         "image",
+			"status":       "ready",
+			"url":          "http://example.com/files/" + media.DisplayKey(testMediaUUID),
+			"thumbnailUrl": "http://example.com/files/" + media.ThumbnailKey(testMediaUUID),
+			"width":        40.0,
+			"height":       20.0,
+			"durationMs":   0.0,
+		},
+	}
 }

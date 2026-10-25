@@ -60,6 +60,10 @@ curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
 | `POST` | `/media` | Upload an image as raw bytes (`Content-Type: image/jpeg\|png\|webp`, max 20 MB). Re-encoded to a 2048 px display JPEG and a 480 px thumbnail; all metadata (incl. GPS) is dropped. Rate limited |
 | `GET` | `/media/{uuid}` | Your own media item (bearer token required) |
 | `GET` | `/files/{key...}` | Stored files under `media/`, with HTTP range support |
+| `POST` | `/posts` | Create a post from your media: `{"mediaUuid","caption"}` (bearer token required) |
+| `GET` | `/posts/{uuid}` | A post. Token optional |
+| `DELETE` | `/posts/{uuid}` | Delete your post and its files |
+| `GET` | `/users/{username}/posts` | A user's posts, newest first. `?limit=` (1-30) and `?cursor=` for paging |
 
 ```bash
 curl -s -X POST localhost:4100/media -H "Authorization: Bearer $TOKEN" \

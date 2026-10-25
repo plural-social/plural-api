@@ -9,6 +9,9 @@ var (
 	ErrAccountNotFound = errors.New("account not found")
 	ErrSessionNotFound = errors.New("session not found")
 	ErrMediaNotFound   = errors.New("media not found")
+	ErrPostNotFound    = errors.New("post not found")
+
+	ErrMediaAlreadyUsed = errors.New("media already used by another post")
 )
 
 type UsernameConflictError struct {
