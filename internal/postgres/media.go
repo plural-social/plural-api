@@ -26,6 +26,32 @@ func mediaScanDest(m *media.Media) []any {
 }
 
 func (s *Store) InsertMedia(ctx context.Context, newMedia media.NewMedia) (media.Media, error) {
+	return insertMedia(ctx, s.db, newMedia)
+}
+
+// InsertVideoMedia stores an uploaded video and queues its transcoding job.
+// Both happen or neither does, so no video waits forever without a job.
+func (s *Store) InsertVideoMedia(ctx context.Context, newMedia media.NewMedia) (media.Media, error) {
+	var inserted media.Media
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		var insertErr error
+		if inserted, insertErr = insertMedia(ctx, tx, newMedia); insertErr != nil {
+			return insertErr
+		}
+		if _, jobErr := tx.ExecContext(ctx, `INSERT INTO media_job (media_uuid) VALUES ($1)`, newMedia.UUID); jobErr != nil {
+			return fmt.Errorf("inserting media job: %w", jobErr)
+		}
+		return nil
+	})
+	return inserted, err
+}
+
+// queryRower is satisfied by *sql.DB and *sql.Tx.
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func insertMedia(ctx context.Context, db queryRower, newMedia media.NewMedia) (media.Media, error) {
 	inserted := media.Media{
 		UUID:          newMedia.UUID,
 		AccountUUID:   newMedia.AccountUUID,
@@ -41,7 +67,7 @@ func (s *Store) InsertMedia(ctx context.Context, newMedia media.NewMedia) (media
 		SizeBytes:     newMedia.SizeBytes,
 		FailureReason: newMedia.FailureReason,
 	}
-	err := s.db.QueryRowContext(ctx, `
+	err := db.QueryRowContext(ctx, `
 		INSERT INTO media (
 			uuid, account_uuid, kind, status, content_type, display_key, thumbnail_key,
 			original_key, width, height, duration_ms, size_bytes, failure_reason, processed_at

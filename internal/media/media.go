@@ -19,13 +19,23 @@ const (
 
 	ImageMaxBytes = 20 << 20
 
+	VideoMaxBytes      = 300 << 20
+	VideoMinDurationMS = 1_000
+	VideoMaxDurationMS = 180_000
+	// videoDurationToleranceMS lets a "3:00" clip that is really 180.4 s through.
+	videoDurationToleranceMS = 500
+	videoMaxSide             = 7680
+
 	ErrTypeUnsupportedMediaType = "unsupportedMediaType"
 	ErrTypeMediaTooLarge        = "mediaTooLarge"
 	ErrTypeInvalidMedia         = "invalidMedia"
 )
 
-// ImageContentTypes are the accepted upload types for images.
-var ImageContentTypes = []string{"image/jpeg", "image/png", "image/webp"}
+// ImageContentTypes and VideoContentTypes are the accepted upload types.
+var (
+	ImageContentTypes = []string{"image/jpeg", "image/png", "image/webp"}
+	VideoContentTypes = []string{"video/mp4", "video/quicktime", "video/webm"}
+)
 
 func DisplayKey(mediaUUID uuid.UUID) string {
 	return "media/" + mediaUUID.String() + "/display.jpg"
@@ -33,6 +43,36 @@ func DisplayKey(mediaUUID uuid.UUID) string {
 
 func ThumbnailKey(mediaUUID uuid.UUID) string {
 	return "media/" + mediaUUID.String() + "/thumb.jpg"
+}
+
+// OriginalKey is the uploaded video before transcoding. It is never served.
+func OriginalKey(mediaUUID uuid.UUID) string {
+	return "media/" + mediaUUID.String() + "/original"
+}
+
+func VideoKey(mediaUUID uuid.UUID) string {
+	return "media/" + mediaUUID.String() + "/video.mp4"
+}
+
+func PosterKey(mediaUUID uuid.UUID) string {
+	return "media/" + mediaUUID.String() + "/poster.jpg"
+}
+
+// Job is a claimed media_job row.
+type Job struct {
+	UUID      uuid.UUID
+	MediaUUID uuid.UUID
+	Attempts  int // after this claim
+}
+
+// VideoResult is what the transcoder stores when a video is ready.
+type VideoResult struct {
+	DisplayKey   string
+	ThumbnailKey string
+	Width        int
+	Height       int
+	DurationMS   int
+	SizeBytes    int64
 }
 
 // Media is a stored media row.

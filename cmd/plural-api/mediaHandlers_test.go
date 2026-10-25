@@ -44,6 +44,7 @@ func Test_app_postMediaEndpoint(t *testing.T) {
 	type testCase struct {
 		request        *http.Request
 		maxImageBytes  int64
+		maxVideoBytes  int64
 		mediaStore     *mediaStoreMock
 		blobStore      *blobStoreMock
 		expectedStatus int
@@ -71,10 +72,15 @@ func Test_app_postMediaEndpoint(t *testing.T) {
 				blobStore:     testCase.blobStore,
 				logger:        zap.NewNop(),
 				maxImageBytes: testCase.maxImageBytes,
+				maxVideoBytes: testCase.maxVideoBytes,
+				tmpDir:        t.TempDir(),
 				newUUID:       func() uuid.UUID { return testMediaUUID },
 			}
 			if a.maxImageBytes == 0 {
 				a.maxImageBytes = media.ImageMaxBytes
+			}
+			if a.maxVideoBytes == 0 {
+				a.maxVideoBytes = media.VideoMaxBytes
 			}
 
 			status, body := serveJSON(t, a, testCase.request)
@@ -96,12 +102,12 @@ func Test_app_postMediaEndpoint(t *testing.T) {
 		expectedBody:   map[string]any{"error": "authentication required", "type": "unauthenticated"},
 	})
 	run("UnsupportedType", testCase{
-		request:        uploadRequest("video/mp4", validImage),
+		request:        uploadRequest("application/pdf", validImage),
 		mediaStore:     &mediaStoreMock{},
 		blobStore:      &blobStoreMock{},
 		expectedStatus: http.StatusUnsupportedMediaType,
 		expectedBody: map[string]any{
-			"error": "unsupported media type, use JPEG, PNG or WebP",
+			"error": "unsupported media type, use JPEG, PNG, WebP, MP4, MOV or WebM",
 			"type":  media.ErrTypeUnsupportedMediaType,
 		},
 	})
@@ -192,6 +198,125 @@ func Test_app_postMediaEndpoint(t *testing.T) {
 			"width":        40.0,
 			"height":       20.0,
 			"durationMs":   0.0,
+		},
+	})
+}
+
+func Test_app_postMediaEndpoint_video(t *testing.T) {
+	video := []byte("pretend this is an mp4")
+	originalKey := media.OriginalKey(testMediaUUID)
+	errTooBig := map[string]any{"error": "the file is too large", "type": media.ErrTypeMediaTooLarge}
+
+	type testCase struct {
+		request        *http.Request
+		maxVideoBytes  int64
+		mediaStore     *mediaStoreMock
+		blobStore      *blobStoreMock
+		expectedStatus int
+		expectedBody   map[string]any
+		expectedDelete []string
+	}
+	run := func(name string, testCase testCase) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			testCase.mediaStore.T = t
+			testCase.blobStore.T = t
+			var deleted []string
+			testCase.blobStore.DeleteStub = func(_ context.Context, key string) error {
+				deleted = append(deleted, key)
+				return nil
+			}
+			a := &app{
+				accountStore:  &accountStoreMock{T: t, GetViewerStub: viewerStub},
+				mediaStore:    testCase.mediaStore,
+				blobStore:     testCase.blobStore,
+				logger:        zap.NewNop(),
+				maxVideoBytes: testCase.maxVideoBytes,
+				tmpDir:        t.TempDir(),
+				newUUID:       func() uuid.UUID { return testMediaUUID },
+			}
+			if a.maxVideoBytes == 0 {
+				a.maxVideoBytes = media.VideoMaxBytes
+			}
+			status, body := serveJSON(t, a, testCase.request)
+			expect.Equal(t, status, testCase.expectedStatus)
+			if testCase.expectedBody != nil {
+				expect.Equal(t, body, testCase.expectedBody)
+			}
+			expect.Equal(t, deleted, testCase.expectedDelete)
+		})
+	}
+
+	streamed := func(body []byte) *http.Request {
+		// No Content-Length: only the body reader can enforce the limit.
+		request := uploadRequest("video/mp4", nil)
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		request.ContentLength = -1
+		return request
+	}
+	putOriginal := func(_ context.Context, key string, r io.Reader, size int64, contentType string) error {
+		expect.Equal(t, key, originalKey)
+		expect.Equal(t, contentType, "video/mp4")
+		data, err := io.ReadAll(r)
+		expect.ErrorNil(t, err)
+		expect.Equal(t, data, video)
+		expect.Equal(t, size, int64(len(video)))
+		return nil
+	}
+
+	run("VideoTooLargeHeader", testCase{
+		request:        uploadRequest("video/mp4", video),
+		maxVideoBytes:  5,
+		mediaStore:     &mediaStoreMock{},
+		blobStore:      &blobStoreMock{},
+		expectedStatus: http.StatusRequestEntityTooLarge,
+		expectedBody:   errTooBig,
+	})
+	run("VideoBodyTooLarge", testCase{
+		request:        streamed(video),
+		maxVideoBytes:  5,
+		mediaStore:     &mediaStoreMock{},
+		blobStore:      &blobStoreMock{},
+		expectedStatus: http.StatusRequestEntityTooLarge,
+		expectedBody:   errTooBig,
+	})
+	run("VideoEmpty", testCase{
+		request:        uploadRequest("video/mp4", nil),
+		mediaStore:     &mediaStoreMock{},
+		blobStore:      &blobStoreMock{},
+		expectedStatus: http.StatusBadRequest,
+		expectedBody:   map[string]any{"error": "the file is empty", "type": media.ErrTypeInvalidMedia},
+	})
+	run("VideoPutError", testCase{
+		request:        uploadRequest("video/mp4", video),
+		mediaStore:     &mediaStoreMock{},
+		blobStore:      &blobStoreMock{PutStub: func(context.Context, string, io.Reader, int64, string) error { return expect.ErrTest }},
+		expectedStatus: http.StatusInternalServerError,
+	})
+	run("VideoInsertError", testCase{
+		request: uploadRequest("video/mp4", video),
+		mediaStore: &mediaStoreMock{InsertVideoMediaStub: func(context.Context, media.NewMedia) (media.Media, error) {
+			return media.Media{}, expect.ErrTest
+		}},
+		blobStore:      &blobStoreMock{PutStub: putOriginal},
+		expectedStatus: http.StatusInternalServerError,
+		expectedDelete: []string{originalKey},
+	})
+	run("VideoSuccess", testCase{
+		request: uploadRequest("video/mp4", video),
+		mediaStore: &mediaStoreMock{InsertVideoMediaStub: func(_ context.Context, newMedia media.NewMedia) (media.Media, error) {
+			expect.Equal(t, newMedia, media.NewMedia{
+				UUID: testMediaUUID, AccountUUID: testAccountUUID, Kind: media.KindVideo, Status: media.StatusProcessing,
+				ContentType: "video/mp4", OriginalKey: originalKey,
+			})
+			return media.Media{UUID: newMedia.UUID, Kind: newMedia.Kind, Status: newMedia.Status, OriginalKey: originalKey}, nil
+		}},
+		blobStore:      &blobStoreMock{PutStub: putOriginal},
+		expectedStatus: http.StatusCreated,
+		expectedBody: map[string]any{
+			"uuid": testMediaUUID.String(), "kind": "video", "status": "processing",
+			"width": 0.0, "height": 0.0, "durationMs": 0.0,
 		},
 	})
 }

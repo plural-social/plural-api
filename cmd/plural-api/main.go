@@ -44,6 +44,8 @@ type app struct {
 	publicURL         string
 	trustProxyHeaders bool
 	maxImageBytes     int64
+	maxVideoBytes     int64
+	tmpDir            string // empty means os.TempDir()
 
 	// Replaceable in tests
 	now     func() time.Time
@@ -73,6 +75,8 @@ func main() {
 		s3Bucket        = flag.String("s3.bucket", "plural-media", "S3 bucket for media files")
 		s3Region        = flag.String("s3.region", "us-east-1", "S3 region")
 		s3UseSSL        = flag.Bool("s3.use.ssl", false, "Use HTTPS to reach S3")
+		maxVideoBytes   = flag.Int64("media.max.video.bytes", media.VideoMaxBytes, "Largest accepted video upload in bytes")
+		tmpDir          = flag.String("media.tmp.dir", "", "Directory for video uploads in progress. Empty uses the system temp dir")
 	)
 
 	if err := ff.Parse(flag.CommandLine, os.Args[1:], ff.WithEnvVars()); err != nil {
@@ -122,6 +126,8 @@ func main() {
 		publicURL:         strings.TrimSuffix(*publicURL, "/"),
 		trustProxyHeaders: *trustProxy,
 		maxImageBytes:     media.ImageMaxBytes,
+		maxVideoBytes:     *maxVideoBytes,
+		tmpDir:            *tmpDir,
 
 		now:     time.Now,
 		newUUID: uuid.New,

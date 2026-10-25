@@ -10,6 +10,7 @@ into its own service later.
 | Path | What |
 |---|---|
 | `cmd/plural-api` | HTTP server: flags, wiring, handlers (`<domain>Handlers.go`) |
+| `cmd/plural-api-transcoder` | Video worker: claims jobs from Postgres and runs ffmpeg |
 | `internal/<domain>` | Domain types and logic (e.g. `account`) |
 | `internal/postgres` | Postgres store and migrations (applied on startup) |
 | `sql/create.sql` | Latest full schema; keep in sync with migrations |
@@ -17,7 +18,8 @@ into its own service later.
 ## Development
 
 ```bash
-make run        # start Postgres and SeaweedFS (S3) in Docker and run the API on :4100
+make run              # start Postgres and SeaweedFS (S3) in Docker and run the API on :4100
+make run-transcoder   # run the video transcoder (needs ffmpeg: brew install ffmpeg)
 make test       # go test -cover -race ./...
 make seed       # add test users (alice, bob, carol; password123), posts and follows. Needs curl, jq, ffmpeg
 make generate   # regenerate mocks (//go:generate go tool mock ...)
@@ -60,7 +62,7 @@ Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 curl -s -X POST localhost:4100/sessions -d '{"login":"alice","password":"password123"}'
 curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
 ```
-| `POST` | `/media` | Upload an image as raw bytes (`Content-Type: image/jpeg\|png\|webp`, max 20 MB). Re-encoded to a 2048 px display JPEG and a 480 px thumbnail; all metadata (incl. GPS) is dropped. Rate limited |
+| `POST` | `/media` | Upload raw bytes. Images (`image/jpeg\|png\|webp`, max 20 MB) are processed at once. Videos (`video/mp4\|quicktime\|webm`, max 300 MB, 1 s to 3 min) return `status: processing` and become `ready` or `failed` after the transcoder runs. For images: (`Content-Type: image/jpeg\|png\|webp`, max 20 MB). Re-encoded to a 2048 px display JPEG and a 480 px thumbnail; all metadata (incl. GPS) is dropped. Rate limited |
 | `GET` | `/media/{uuid}` | Your own media item (bearer token required) |
 | `GET` | `/files/{key...}` | Stored files under `media/`, with HTTP range support |
 | `POST` | `/posts` | Create a post from your media: `{"mediaUuid","caption"}` (bearer token required) |
@@ -118,3 +120,35 @@ docker compose exec postgres psql -U plural -c "UPDATE account SET role = 'admin
 
 Roles are read from the database on every request, so the change applies
 right away with no new login.
+
+## Videos
+
+Video uploads are stored as-is and queued in the `media_job` table. The
+transcoder (`cmd/plural-api-transcoder`) claims jobs with
+`FOR UPDATE SKIP LOCKED`, so several transcoders can run at once without
+processing a video twice. For each job it:
+
+1. Checks the video with `ffprobe` (readable, 1 s to 3 min, at most 7680 px).
+2. Transcodes it to one H.264/AAC MP4, short side at most 720 px, with the
+   index at the start (`faststart`) and all metadata (including location) removed.
+3. Takes a JPEG poster frame, stores both files, marks the media `ready` and
+   deletes the original.
+
+Unreadable or out-of-range videos fail at once with a reason the uploader
+sees. Other errors retry with a growing delay, up to `-max.attempts`. A worker
+that crashes leaves its job `running`; another worker takes it over once the
+lock is older than `-stale.after`. On SIGINT/SIGTERM the transcoder finishes
+its current job before exiting.
+
+```bash
+make run-transcoder        # local, needs ffmpeg and ffprobe in PATH
+make build-transcoder      # Docker image with ffmpeg included
+```
+
+Transcoder flags: the same `-db.connection` and `-s3.*` flags as the API, plus
+`-poll.interval` (2s), `-job.timeout` (10m), `-stale.after` (15m, must exceed
+`-job.timeout`), `-max.attempts` (3), `-ffmpeg.path`, `-ffprobe.path` and
+`-tmp.dir`.
+
+API flags for videos: `-media.max.video.bytes` (300 MB) and `-media.tmp.dir`
+(where uploads are buffered before they go to storage).

@@ -14,11 +14,13 @@ import (
 // mediaStoreMock is a mock implementation of the mediaStore
 // interface.
 type mediaStoreMock struct {
-	T                 *testing.T
-	InsertMediaStub   func(ctx context.Context, newMedia media.NewMedia) (media.Media, error)
-	InsertMediaCalled int32
-	GetMediaStub      func(ctx context.Context, mediaUUID uuid.UUID) (media.Media, error)
-	GetMediaCalled    int32
+	T                      *testing.T
+	InsertMediaStub        func(ctx context.Context, newMedia media.NewMedia) (media.Media, error)
+	InsertMediaCalled      int32
+	InsertVideoMediaStub   func(ctx context.Context, newMedia media.NewMedia) (media.Media, error)
+	InsertVideoMediaCalled int32
+	GetMediaStub           func(ctx context.Context, mediaUUID uuid.UUID) (media.Media, error)
+	GetMediaCalled         int32
 }
 
 // Verify that *mediaStoreMock implements mediaStore.
@@ -35,6 +37,19 @@ func (m *mediaStoreMock) InsertMedia(ctx context.Context, newMedia media.NewMedi
 		panic("InsertMedia unimplemented")
 	}
 	return m.InsertMediaStub(ctx, newMedia)
+}
+
+// InsertVideoMedia is a stub for the mediaStore.InsertVideoMedia
+// method that records the number of times it has been called.
+func (m *mediaStoreMock) InsertVideoMedia(ctx context.Context, newMedia media.NewMedia) (media.Media, error) {
+	atomic.AddInt32(&m.InsertVideoMediaCalled, 1)
+	if m.InsertVideoMediaStub == nil {
+		if m.T != nil {
+			m.T.Error("InsertVideoMediaStub is nil")
+		}
+		panic("InsertVideoMedia unimplemented")
+	}
+	return m.InsertVideoMediaStub(ctx, newMedia)
 }
 
 // GetMedia is a stub for the mediaStore.GetMedia

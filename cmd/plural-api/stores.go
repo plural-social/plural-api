@@ -36,6 +36,7 @@ type accountStore interface {
 //go:generate go tool mock -o mediaStore_mock.go mediaStore
 type mediaStore interface {
 	InsertMedia(ctx context.Context, newMedia media.NewMedia) (media.Media, error)
+	InsertVideoMedia(ctx context.Context, newMedia media.NewMedia) (media.Media, error)
 	GetMedia(ctx context.Context, mediaUUID uuid.UUID) (media.Media, error)
 }
 

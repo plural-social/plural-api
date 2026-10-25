@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"os"
 	"path"
 	"slices"
 	"strings"
@@ -24,20 +26,30 @@ func (a *app) setUpMediaRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /files/{key...}", a.serveFile)
 }
 
-// postMediaEndpoint takes raw image bytes (not JSON), re-encodes them and
-// stores a display size and a thumbnail.
-func (a *app) postMediaEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
-	ctx := r.Context()
+var errMediaTooLarge = ErrorResponse{Message: "the file is too large", Type: media.ErrTypeMediaTooLarge}
 
+// postMediaEndpoint takes raw file bytes (not JSON). Images are processed in
+// the request; videos are stored and queued for the transcoder (D5).
+func (a *app) postMediaEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
 	contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if !slices.Contains(media.ImageContentTypes, contentType) {
+	switch {
+	case slices.Contains(media.ImageContentTypes, contentType):
+		return a.postImageMedia(r, viewer)
+	case slices.Contains(media.VideoContentTypes, contentType):
+		return a.postVideoMedia(r, viewer, contentType)
+	default:
 		return http.StatusUnsupportedMediaType, ErrorResponse{
-			Message: "unsupported media type, use JPEG, PNG or WebP",
+			Message: "unsupported media type, use JPEG, PNG, WebP, MP4, MOV or WebM",
 			Type:    media.ErrTypeUnsupportedMediaType,
 		}
 	}
+}
 
-	errTooLarge := ErrorResponse{Message: "the file is too large", Type: media.ErrTypeMediaTooLarge}
+// postImageMedia re-encodes an image and stores a display size and a thumbnail.
+func (a *app) postImageMedia(r *http.Request, viewer account.Viewer) (int, any) {
+	ctx := r.Context()
+
+	errTooLarge := errMediaTooLarge
 	if r.ContentLength > a.maxImageBytes {
 		return http.StatusRequestEntityTooLarge, errTooLarge
 	}
@@ -87,6 +99,57 @@ func (a *app) postMediaEndpoint(r *http.Request, viewer account.Viewer) (int, an
 		return a.handleError(err)
 	}
 
+	return http.StatusCreated, a.mediaResponse(r, inserted)
+}
+
+// postVideoMedia stores the original upload and queues it for transcoding.
+// The body is streamed to a temp file, so a 300 MB upload never sits in memory.
+func (a *app) postVideoMedia(r *http.Request, viewer account.Viewer, contentType string) (int, any) {
+	ctx := r.Context()
+
+	if r.ContentLength > a.maxVideoBytes {
+		return http.StatusRequestEntityTooLarge, errMediaTooLarge
+	}
+	file, err := os.CreateTemp(a.tmpDir, "upload-*")
+	if err != nil {
+		return a.handleError(fmt.Errorf("creating temp file: %w", err))
+	}
+	defer func() {
+		file.Close()
+		os.Remove(file.Name())
+	}()
+
+	size, err := io.Copy(file, http.MaxBytesReader(nil, r.Body, a.maxVideoBytes))
+	if errors.As(err, new(*http.MaxBytesError)) {
+		return http.StatusRequestEntityTooLarge, errMediaTooLarge
+	}
+	if err != nil {
+		return http.StatusBadRequest, ErrorResponse{Message: "reading request body"}
+	}
+	if size == 0 {
+		return http.StatusBadRequest, ErrorResponse{Message: "the file is empty", Type: media.ErrTypeInvalidMedia}
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return a.handleError(fmt.Errorf("rewinding upload: %w", err))
+	}
+
+	mediaUUID := a.newUUID()
+	originalKey := media.OriginalKey(mediaUUID)
+	if err := a.blobStore.Put(ctx, originalKey, file, size, contentType); err != nil {
+		return a.handleError(err)
+	}
+	inserted, err := a.mediaStore.InsertVideoMedia(ctx, media.NewMedia{
+		UUID:        mediaUUID,
+		AccountUUID: viewer.UUID,
+		Kind:        media.KindVideo,
+		Status:      media.StatusProcessing,
+		ContentType: "video/mp4",
+		OriginalKey: originalKey,
+	})
+	if err != nil {
+		a.deleteBlobs(ctx, originalKey)
+		return a.handleError(err)
+	}
 	return http.StatusCreated, a.mediaResponse(r, inserted)
 }
 

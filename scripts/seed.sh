@@ -7,6 +7,7 @@ API=${API:-http://localhost:4100}
 PASSWORD=password123
 USERS=(alice bob carol)
 POSTS_PER_USER=4
+VIDEOS_PER_USER=2
 
 for tool in curl jq ffmpeg; do
   command -v "$tool" >/dev/null || { echo "seed: '$tool' is required but not installed" >&2; exit 1; }
@@ -40,6 +41,22 @@ for user in "${USERS[@]}"; do
   done
 done
 
+# Videos stay "processing" until the transcoder (make run-transcoder) handles them.
+for user in "${USERS[@]}"; do
+  for i in $(seq 1 "$VIDEOS_PER_USER"); do
+    video="$tmp/$user-v$i.mp4"
+    ffmpeg -loglevel error -y \
+      -f lavfi -i "testsrc2=size=1080x1920:rate=30:duration=6" \
+      -f lavfi -i "sine=frequency=$((300 + RANDOM % 500)):duration=6" \
+      -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$video"
+    media=$(curl -sf -X POST "$API/media" -H "Authorization: Bearer $(token "$user")" \
+      -H 'Content-Type: video/mp4' --data-binary "@$video" | jq -r .uuid)
+    curl -sf -o /dev/null -X POST "$API/posts" -H "Authorization: Bearer $(token "$user")" \
+      -d "{\"mediaUuid\":\"$media\",\"caption\":\"$user test video $i\"}"
+    posts=$((posts + 1))
+  done
+done
+
 follow() {
   curl -sf -o /dev/null -X PUT "$API/users/$2/follow" -H "Authorization: Bearer $(token "$1")"
 }
@@ -64,3 +81,4 @@ curl -sf -o /dev/null -X POST "$API/posts/$first_alice_post/comments" \
   -H "Authorization: Bearer $(token bob)" -d '{"body":"nice one"}'
 
 echo "Seeded ${#USERS[@]} users (${USERS[*]}), password '$PASSWORD', $posts new posts."
+echo "Video posts appear in feeds once the transcoder has processed them (make run-transcoder)."
