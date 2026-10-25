@@ -110,5 +110,6 @@ func (s *Store) InsertAccount(ctx context.Context, newAccount account.NewAccount
 	if err != nil {
 		return account.Account{}, fmt.Errorf("inserting account: %w", err)
 	}
+	created.CreatedAt = created.CreatedAt.UTC()
 	return created, nil
 }

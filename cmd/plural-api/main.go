@@ -27,6 +27,11 @@ type app struct {
 	corsOrigins    []string
 	instanceDomain string
 	instanceName   string
+	now            func() time.Time
+
+	trustProxyHeaders bool
+	sessionLimiter    *ipRateLimiter
+	signupLimiter     *ipRateLimiter
 }
 
 func main() {
@@ -38,6 +43,7 @@ func main() {
 		corsOrigins     = flag.String("cors.origins", "http://localhost:8081", "Comma-separated list of allowed browser origins; * allows any")
 		instanceDomain  = flag.String("instance.domain", "localhost", "Public domain of this instance")
 		instanceName    = flag.String("instance.name", "Plural", "Display name of this instance")
+		trustProxy      = flag.Bool("trust.proxy.headers", false, "Trust X-Forwarded-For for client IPs (only behind a proxy that sets it)")
 	)
 
 	if err := ff.Parse(flag.CommandLine, os.Args[1:], ff.WithEnvVars()); err != nil {
@@ -65,6 +71,11 @@ func main() {
 		corsOrigins:    splitOrigins(*corsOrigins),
 		instanceDomain: *instanceDomain,
 		instanceName:   *instanceName,
+		now:            time.Now,
+
+		trustProxyHeaders: *trustProxy,
+		sessionLimiter:    newIPRateLimiter(6*time.Second, 10),
+		signupLimiter:     newIPRateLimiter(12*time.Minute, 5),
 	}
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", *port),
@@ -106,6 +117,8 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /health", a.endpoint(a.getHealthEndpoint))
 	a.setUpInstanceRoutes(mux)
 	a.setUpAccountRoutes(mux)
+	a.setUpSessionRoutes(mux)
+	a.setUpMeRoutes(mux)
 	return a.recoverPanics(a.logRequests(a.cors(mux)))
 }
 

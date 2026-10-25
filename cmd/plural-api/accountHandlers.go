@@ -14,7 +14,7 @@ import (
 var usernamePattern = regexp.MustCompile(`^[a-z0-9_]{1,30}$`)
 
 func (a *app) setUpAccountRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /accounts", a.endpoint(a.postAccountEndpoint))
+	mux.HandleFunc("POST /accounts", a.endpoint(a.rateLimited(a.signupLimiter, a.postAccountEndpoint)))
 }
 
 func (a *app) postAccountEndpoint(r *http.Request) (int, any) {

@@ -7,17 +7,28 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/plural-social/plural-api/internal/account"
 )
 
 // accountStoreMock is a mock implementation of the accountStore
 // interface.
 type accountStoreMock struct {
-	T                   *testing.T
-	PingStub            func(ctx context.Context) error
-	PingCalled          int32
-	InsertAccountStub   func(ctx context.Context, newAccount account.NewAccount) (account.Account, error)
-	InsertAccountCalled int32
+	T                    *testing.T
+	PingStub             func(ctx context.Context) error
+	PingCalled           int32
+	InsertAccountStub    func(ctx context.Context, newAccount account.NewAccount) (account.Account, error)
+	InsertAccountCalled  int32
+	GetCredentialsStub   func(ctx context.Context, login string) (account.Credentials, error)
+	GetCredentialsCalled int32
+	InsertSessionStub    func(ctx context.Context, session account.NewSession) error
+	InsertSessionCalled  int32
+	GetViewerStub        func(ctx context.Context, tokenHash []byte) (account.Viewer, error)
+	GetViewerCalled      int32
+	DeleteSessionStub    func(ctx context.Context, tokenHash []byte) error
+	DeleteSessionCalled  int32
+	GetMeStub            func(ctx context.Context, accountUUID uuid.UUID) (account.Me, error)
+	GetMeCalled          int32
 }
 
 // Verify that *accountStoreMock implements accountStore.
@@ -47,4 +58,69 @@ func (m *accountStoreMock) InsertAccount(ctx context.Context, newAccount account
 		panic("InsertAccount unimplemented")
 	}
 	return m.InsertAccountStub(ctx, newAccount)
+}
+
+// GetCredentials is a stub for the accountStore.GetCredentials
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetCredentials(ctx context.Context, login string) (account.Credentials, error) {
+	atomic.AddInt32(&m.GetCredentialsCalled, 1)
+	if m.GetCredentialsStub == nil {
+		if m.T != nil {
+			m.T.Error("GetCredentialsStub is nil")
+		}
+		panic("GetCredentials unimplemented")
+	}
+	return m.GetCredentialsStub(ctx, login)
+}
+
+// InsertSession is a stub for the accountStore.InsertSession
+// method that records the number of times it has been called.
+func (m *accountStoreMock) InsertSession(ctx context.Context, session account.NewSession) error {
+	atomic.AddInt32(&m.InsertSessionCalled, 1)
+	if m.InsertSessionStub == nil {
+		if m.T != nil {
+			m.T.Error("InsertSessionStub is nil")
+		}
+		panic("InsertSession unimplemented")
+	}
+	return m.InsertSessionStub(ctx, session)
+}
+
+// GetViewer is a stub for the accountStore.GetViewer
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetViewer(ctx context.Context, tokenHash []byte) (account.Viewer, error) {
+	atomic.AddInt32(&m.GetViewerCalled, 1)
+	if m.GetViewerStub == nil {
+		if m.T != nil {
+			m.T.Error("GetViewerStub is nil")
+		}
+		panic("GetViewer unimplemented")
+	}
+	return m.GetViewerStub(ctx, tokenHash)
+}
+
+// DeleteSession is a stub for the accountStore.DeleteSession
+// method that records the number of times it has been called.
+func (m *accountStoreMock) DeleteSession(ctx context.Context, tokenHash []byte) error {
+	atomic.AddInt32(&m.DeleteSessionCalled, 1)
+	if m.DeleteSessionStub == nil {
+		if m.T != nil {
+			m.T.Error("DeleteSessionStub is nil")
+		}
+		panic("DeleteSession unimplemented")
+	}
+	return m.DeleteSessionStub(ctx, tokenHash)
+}
+
+// GetMe is a stub for the accountStore.GetMe
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetMe(ctx context.Context, accountUUID uuid.UUID) (account.Me, error) {
+	atomic.AddInt32(&m.GetMeCalled, 1)
+	if m.GetMeStub == nil {
+		if m.T != nil {
+			m.T.Error("GetMeStub is nil")
+		}
+		panic("GetMe unimplemented")
+	}
+	return m.GetMeStub(ctx, accountUUID)
 }

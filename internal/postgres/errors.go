@@ -1,6 +1,14 @@
 package postgres
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var (
+	ErrAccountNotFound = errors.New("account not found")
+	ErrSessionNotFound = errors.New("session not found")
+)
 
 type UsernameConflictError struct {
 	Username string

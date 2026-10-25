@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -70,4 +71,19 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 
 	actual := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(expected)))
 	return subtle.ConstantTimeCompare(actual, expected) == 1, nil
+}
+
+// dummyPasswordHash is verified when a login name does not exist, so a missing
+// account takes as long to reject as a wrong password.
+var dummyPasswordHash = sync.OnceValues(func() (string, error) {
+	return HashPassword("plural-timing-equalizer")
+})
+
+// VerifyDummyPassword spends the same time as VerifyPassword and returns nothing useful.
+func VerifyDummyPassword(password string) {
+	hash, err := dummyPasswordHash()
+	if err != nil {
+		return
+	}
+	_, _ = VerifyPassword(password, hash)
 }

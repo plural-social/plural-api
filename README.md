@@ -28,6 +28,7 @@ make fmt        # gofumpt
 | `-cors.origins` | `http://localhost:8081` | Comma-separated allowed browser origins; `*` allows any |
 | `-instance.domain` | `localhost` | Public domain of this instance |
 | `-instance.name` | `Plural` | Display name of this instance |
+| `-trust.proxy.headers` | `false` | Use `X-Forwarded-For` for client IPs (rate limits). Only behind a proxy that sets it |
 
 Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 
@@ -38,3 +39,13 @@ Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 | `GET` | `/health` | Health check (pings Postgres) |
 | `POST` | `/accounts` | Create an account: `{"username","email","password"}` |
 | `GET` | `/instance` | Instance info: `{"domain","name","version"}` |
+| `POST` | `/sessions` | Log in: `{"login","password"}` (username or email). Returns `{token,expiresAt,me}`. Rate limited per IP |
+| `DELETE` | `/sessions/current` | Log out (bearer token required) |
+| `GET` | `/me` | Current account (bearer token required) |
+
+`POST /accounts` is also rate limited per IP.
+
+```bash
+curl -s -X POST localhost:4100/sessions -d '{"login":"alice","password":"password123"}'
+curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
+```
