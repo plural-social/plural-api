@@ -62,7 +62,7 @@ Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 curl -s -X POST localhost:4100/sessions -d '{"login":"alice","password":"password123"}'
 curl -s localhost:4100/me -H "Authorization: Bearer $TOKEN"
 ```
-| `POST` | `/media` | Upload raw bytes. Images (`image/jpeg\|png\|webp`, max 20 MB) are processed at once. Videos (`video/mp4\|quicktime\|webm`, max 300 MB, 1 s to 3 min) return `status: processing` and become `ready` or `failed` after the transcoder runs. For images: (`Content-Type: image/jpeg\|png\|webp`, max 20 MB). Re-encoded to a 2048 px display JPEG and a 480 px thumbnail; all metadata (incl. GPS) is dropped. Rate limited |
+| `POST` | `/media` | Upload raw bytes (bearer token required, rate limited). Images (`image/jpeg\|png\|webp`, max 20 MB) are re-encoded at once to a 2048 px display JPEG and a 480 px thumbnail, dropping all metadata (incl. GPS). Videos (`video/mp4\|quicktime\|webm`, max 300 MB, 1 s to 3 min) return `status: processing` and become `ready` or `failed` once the transcoder runs |
 | `GET` | `/media/{uuid}` | Your own media item (bearer token required) |
 | `GET` | `/files/{key...}` | Stored files under `media/`, with HTTP range support |
 | `POST` | `/posts` | Create a post from your media: `{"mediaUuid","caption"}` (bearer token required) |
