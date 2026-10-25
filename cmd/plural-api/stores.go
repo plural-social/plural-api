@@ -31,6 +31,9 @@ type accountStore interface {
 	RemoveAvatar(ctx context.Context, accountUUID uuid.UUID) error
 	GetUserSummary(ctx context.Context, accountUUID uuid.UUID) (account.UserSummary, error)
 	GetAccountRole(ctx context.Context, accountUUID uuid.UUID) (string, error)
+	GetPasswordHash(ctx context.Context, accountUUID uuid.UUID) (string, error)
+	ListMediaKeys(ctx context.Context, accountUUID uuid.UUID) ([]string, error)
+	DeleteAccount(ctx context.Context, accountUUID uuid.UUID) error
 }
 
 //go:generate go tool mock -o mediaStore_mock.go mediaStore

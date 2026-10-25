@@ -31,6 +31,7 @@ make fmt        # gofumpt
 | `-cors.origins` | `http://localhost:8081` | Comma-separated allowed browser origins; `*` allows any |
 | `-instance.domain` | `localhost` | Public domain of this instance |
 | `-instance.name` | `Plural` | Display name of this instance |
+| `-instance.terms.url` | empty | Terms and community guidelines page. When set, sign-up requires agreeing to it |
 | `-trust.proxy.headers` | `false` | Use `X-Forwarded-For` / `X-Forwarded-Proto` (rate limits, file URLs). Only behind a proxy that sets them |
 | `-public.url` | empty | Base URL for file links. Empty builds links from the request host |
 | `-s3.endpoint` | `localhost:8333` | S3-compatible storage (`host:port`, no scheme) |
@@ -51,6 +52,7 @@ Flags can also be set as env vars (`-db.connection` → `DB_CONNECTION`).
 | `POST` | `/sessions` | Log in: `{"login","password"}` (username or email). Returns `{token,expiresAt,me}`. Rate limited per IP |
 | `DELETE` | `/sessions/current` | Log out (bearer token required) |
 | `GET` | `/me` | Current account (bearer token required) |
+| `DELETE` | `/me` | Delete your account, posts, comments, likes and files for good: `{"password"}`. Rate limited |
 | `PATCH` | `/me` | Update `{"displayName","bio"}`; omitted fields are unchanged |
 | `PUT` | `/me/avatar` | Set your avatar from your own ready image that no post uses: `{"mediaUuid"}`. Returns your account |
 | `DELETE` | `/me/avatar` | Remove your avatar |

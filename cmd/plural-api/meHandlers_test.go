@@ -277,3 +277,85 @@ func Test_app_deleteAvatarEndpoint(t *testing.T) {
 		expect.Equal(t, hasAvatar, false)
 	})
 }
+
+func Test_app_deleteMeEndpoint(t *testing.T) {
+	hash := expect.Must(account.HashPassword("password123"))(t)
+	keys := []string{"media/a/display.jpg", "media/a/thumb.jpg", "media/b/original"}
+	hashStub := func(context.Context, uuid.UUID) (string, error) { return hash, nil }
+	body := `{"password":"password123"}`
+
+	type testCase struct {
+		request        *http.Request
+		accountStore   *accountStoreMock
+		expectedStatus int
+		expectedBody   map[string]any
+		expectedDelete []string
+	}
+	run := func(name string, testCase testCase) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			testCase.accountStore.T = t
+			testCase.accountStore.GetViewerStub = viewerStub
+			var deleted []string
+			a := &app{
+				accountStore: testCase.accountStore,
+				blobStore: &blobStoreMock{T: t, DeleteStub: func(_ context.Context, key string) error {
+					deleted = append(deleted, key)
+					// A storage failure must not stop the other files from being deleted.
+					if key == keys[0] {
+						return expect.ErrTest
+					}
+					return nil
+				}},
+				logger: zap.NewNop(),
+			}
+			status, got := serveJSON(t, a, testCase.request)
+			expect.Equal(t, status, testCase.expectedStatus)
+			if testCase.expectedBody != nil {
+				expect.Equal(t, got, testCase.expectedBody)
+			}
+			expect.Equal(t, deleted, testCase.expectedDelete)
+		})
+	}
+
+	run("Unauthenticated", testCase{
+		request:        httptest.NewRequest(http.MethodDelete, "/me", strings.NewReader(body)),
+		accountStore:   &accountStoreMock{},
+		expectedStatus: http.StatusUnauthorized,
+	})
+	run("MalformedJSON", testCase{
+		request:        authedRequest(http.MethodDelete, "/me", `{"password":`),
+		accountStore:   &accountStoreMock{},
+		expectedStatus: http.StatusBadRequest,
+	})
+	run("WrongPassword", testCase{
+		request:        authedRequest(http.MethodDelete, "/me", `{"password":"nope"}`),
+		accountStore:   &accountStoreMock{GetPasswordHashStub: hashStub},
+		expectedStatus: http.StatusUnauthorized,
+		expectedBody:   map[string]any{"error": "invalid login or password", "type": account.ErrTypeInvalidCredentials},
+	})
+	run("DeleteError", testCase{
+		request: authedRequest(http.MethodDelete, "/me", body),
+		accountStore: &accountStoreMock{
+			GetPasswordHashStub: hashStub,
+			ListMediaKeysStub:   func(context.Context, uuid.UUID) ([]string, error) { return keys, nil },
+			DeleteAccountStub:   func(context.Context, uuid.UUID) error { return expect.ErrTest },
+		},
+		expectedStatus: http.StatusInternalServerError,
+		// Files stay: the account still exists, so its content must too.
+	})
+	run("Success", testCase{
+		request: authedRequest(http.MethodDelete, "/me", body),
+		accountStore: &accountStoreMock{
+			GetPasswordHashStub: hashStub,
+			ListMediaKeysStub:   func(context.Context, uuid.UUID) ([]string, error) { return keys, nil },
+			DeleteAccountStub: func(_ context.Context, accountUUID uuid.UUID) error {
+				expect.Equal(t, accountUUID, testAccountUUID)
+				return nil
+			},
+		},
+		expectedStatus: http.StatusNoContent,
+		expectedDelete: keys,
+	})
+}

@@ -41,6 +41,7 @@ type app struct {
 	corsOrigins       []string
 	instanceDomain    string
 	instanceName      string
+	termsURL          string
 	publicURL         string
 	trustProxyHeaders bool
 	maxImageBytes     int64
@@ -67,6 +68,7 @@ func main() {
 		corsOrigins     = flag.String("cors.origins", "http://localhost:8081", "Comma-separated list of allowed browser origins; * allows any")
 		instanceDomain  = flag.String("instance.domain", "localhost", "Public domain of this instance")
 		instanceName    = flag.String("instance.name", "Plural", "Display name of this instance")
+		termsURL        = flag.String("instance.terms.url", "", "URL of the terms and community guidelines shown at sign-up. Empty hides the terms checkbox")
 		trustProxy      = flag.Bool("trust.proxy.headers", false, "Trust X-Forwarded-For and X-Forwarded-Proto (only behind a proxy that sets them)")
 		publicURL       = flag.String("public.url", "", "Public base URL for file links, e.g. https://plural.example. Empty uses the request host")
 		s3Endpoint      = flag.String("s3.endpoint", "localhost:8333", "S3-compatible storage endpoint (host:port, no scheme)")
@@ -123,6 +125,7 @@ func main() {
 		corsOrigins:       splitOrigins(*corsOrigins),
 		instanceDomain:    *instanceDomain,
 		instanceName:      *instanceName,
+		termsURL:          *termsURL,
 		publicURL:         strings.TrimSuffix(*publicURL, "/"),
 		trustProxyHeaders: *trustProxy,
 		maxImageBytes:     media.ImageMaxBytes,

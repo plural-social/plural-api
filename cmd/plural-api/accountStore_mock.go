@@ -14,35 +14,41 @@ import (
 // accountStoreMock is a mock implementation of the accountStore
 // interface.
 type accountStoreMock struct {
-	T                    *testing.T
-	PingStub             func(ctx context.Context) error
-	PingCalled           int32
-	InsertAccountStub    func(ctx context.Context, newAccount account.NewAccount) (account.Account, error)
-	InsertAccountCalled  int32
-	GetCredentialsStub   func(ctx context.Context, login string) (account.Credentials, error)
-	GetCredentialsCalled int32
-	InsertSessionStub    func(ctx context.Context, session account.NewSession) error
-	InsertSessionCalled  int32
-	GetViewerStub        func(ctx context.Context, tokenHash []byte) (account.Viewer, error)
-	GetViewerCalled      int32
-	DeleteSessionStub    func(ctx context.Context, tokenHash []byte) error
-	DeleteSessionCalled  int32
-	GetMeStub            func(ctx context.Context, accountUUID uuid.UUID) (account.Me, error)
-	GetMeCalled          int32
-	UpdateProfileStub    func(ctx context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error
-	UpdateProfileCalled  int32
-	GetProfileStub       func(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error)
-	GetProfileCalled     int32
-	GetAccountUUIDStub   func(ctx context.Context, username string) (uuid.UUID, error)
-	GetAccountUUIDCalled int32
-	SetAvatarStub        func(ctx context.Context, accountUUID uuid.UUID, mediaUUID uuid.UUID) error
-	SetAvatarCalled      int32
-	RemoveAvatarStub     func(ctx context.Context, accountUUID uuid.UUID) error
-	RemoveAvatarCalled   int32
-	GetUserSummaryStub   func(ctx context.Context, accountUUID uuid.UUID) (account.UserSummary, error)
-	GetUserSummaryCalled int32
-	GetAccountRoleStub   func(ctx context.Context, accountUUID uuid.UUID) (string, error)
-	GetAccountRoleCalled int32
+	T                     *testing.T
+	PingStub              func(ctx context.Context) error
+	PingCalled            int32
+	InsertAccountStub     func(ctx context.Context, newAccount account.NewAccount) (account.Account, error)
+	InsertAccountCalled   int32
+	GetCredentialsStub    func(ctx context.Context, login string) (account.Credentials, error)
+	GetCredentialsCalled  int32
+	InsertSessionStub     func(ctx context.Context, session account.NewSession) error
+	InsertSessionCalled   int32
+	GetViewerStub         func(ctx context.Context, tokenHash []byte) (account.Viewer, error)
+	GetViewerCalled       int32
+	DeleteSessionStub     func(ctx context.Context, tokenHash []byte) error
+	DeleteSessionCalled   int32
+	GetMeStub             func(ctx context.Context, accountUUID uuid.UUID) (account.Me, error)
+	GetMeCalled           int32
+	UpdateProfileStub     func(ctx context.Context, accountUUID uuid.UUID, update account.ProfileUpdate) error
+	UpdateProfileCalled   int32
+	GetProfileStub        func(ctx context.Context, username string, viewerUUID *uuid.UUID) (account.Profile, error)
+	GetProfileCalled      int32
+	GetAccountUUIDStub    func(ctx context.Context, username string) (uuid.UUID, error)
+	GetAccountUUIDCalled  int32
+	SetAvatarStub         func(ctx context.Context, accountUUID uuid.UUID, mediaUUID uuid.UUID) error
+	SetAvatarCalled       int32
+	RemoveAvatarStub      func(ctx context.Context, accountUUID uuid.UUID) error
+	RemoveAvatarCalled    int32
+	GetUserSummaryStub    func(ctx context.Context, accountUUID uuid.UUID) (account.UserSummary, error)
+	GetUserSummaryCalled  int32
+	GetAccountRoleStub    func(ctx context.Context, accountUUID uuid.UUID) (string, error)
+	GetAccountRoleCalled  int32
+	GetPasswordHashStub   func(ctx context.Context, accountUUID uuid.UUID) (string, error)
+	GetPasswordHashCalled int32
+	ListMediaKeysStub     func(ctx context.Context, accountUUID uuid.UUID) ([]string, error)
+	ListMediaKeysCalled   int32
+	DeleteAccountStub     func(ctx context.Context, accountUUID uuid.UUID) error
+	DeleteAccountCalled   int32
 }
 
 // Verify that *accountStoreMock implements accountStore.
@@ -228,4 +234,43 @@ func (m *accountStoreMock) GetAccountRole(ctx context.Context, accountUUID uuid.
 		panic("GetAccountRole unimplemented")
 	}
 	return m.GetAccountRoleStub(ctx, accountUUID)
+}
+
+// GetPasswordHash is a stub for the accountStore.GetPasswordHash
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetPasswordHash(ctx context.Context, accountUUID uuid.UUID) (string, error) {
+	atomic.AddInt32(&m.GetPasswordHashCalled, 1)
+	if m.GetPasswordHashStub == nil {
+		if m.T != nil {
+			m.T.Error("GetPasswordHashStub is nil")
+		}
+		panic("GetPasswordHash unimplemented")
+	}
+	return m.GetPasswordHashStub(ctx, accountUUID)
+}
+
+// ListMediaKeys is a stub for the accountStore.ListMediaKeys
+// method that records the number of times it has been called.
+func (m *accountStoreMock) ListMediaKeys(ctx context.Context, accountUUID uuid.UUID) ([]string, error) {
+	atomic.AddInt32(&m.ListMediaKeysCalled, 1)
+	if m.ListMediaKeysStub == nil {
+		if m.T != nil {
+			m.T.Error("ListMediaKeysStub is nil")
+		}
+		panic("ListMediaKeys unimplemented")
+	}
+	return m.ListMediaKeysStub(ctx, accountUUID)
+}
+
+// DeleteAccount is a stub for the accountStore.DeleteAccount
+// method that records the number of times it has been called.
+func (m *accountStoreMock) DeleteAccount(ctx context.Context, accountUUID uuid.UUID) error {
+	atomic.AddInt32(&m.DeleteAccountCalled, 1)
+	if m.DeleteAccountStub == nil {
+		if m.T != nil {
+			m.T.Error("DeleteAccountStub is nil")
+		}
+		panic("DeleteAccount unimplemented")
+	}
+	return m.DeleteAccountStub(ctx, accountUUID)
 }

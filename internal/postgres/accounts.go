@@ -202,3 +202,58 @@ func (s *Store) GetAccountRole(ctx context.Context, accountUUID uuid.UUID) (stri
 	}
 	return role, nil
 }
+
+func (s *Store) GetPasswordHash(ctx context.Context, accountUUID uuid.UUID) (string, error) {
+	var hash string
+	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM account WHERE uuid = $1`, accountUUID).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrAccountNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("getting password hash: %w", err)
+	}
+	return hash, nil
+}
+
+// ListMediaKeys returns every stored file of the account's media, so they can
+// be deleted from storage together with the account.
+func (s *Store) ListMediaKeys(ctx context.Context, accountUUID uuid.UUID) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT key
+		FROM media m, LATERAL UNNEST(ARRAY[m.display_key, m.thumbnail_key, m.original_key]) AS key
+		WHERE m.account_uuid = $1 AND key <> ''`,
+		accountUUID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing media keys: %w", err)
+	}
+	defer rows.Close()
+
+	keys := []string{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("scanning media key: %w", err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading media keys: %w", err)
+	}
+	return keys, nil
+}
+
+// DeleteAccount removes the account and everything it owns. Posts go first
+// because post_media_fkey is RESTRICT: deleting the account would otherwise
+// try to delete the media its posts still reference. Every other table cascades.
+func (s *Store) DeleteAccount(ctx context.Context, accountUUID uuid.UUID) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM post WHERE account_uuid = $1`, accountUUID); err != nil {
+			return fmt.Errorf("deleting posts: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM account WHERE uuid = $1`, accountUUID); err != nil {
+			return fmt.Errorf("deleting account: %w", err)
+		}
+		return nil
+	})
+}

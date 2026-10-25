@@ -50,6 +50,12 @@ type ProfileUpdate struct {
 	Bio         *string
 }
 
+// DeleteMeRequest asks for the password again: deleting an account cannot be
+// undone, and a stolen session token should not be enough to do it.
+type DeleteMeRequest struct {
+	Password string `json:"password"`
+}
+
 type SetAvatarRequest struct {
 	MediaUUID string `json:"mediaUuid"`
 }

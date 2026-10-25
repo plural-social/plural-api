@@ -14,6 +14,7 @@ import (
 
 func (a *app) setUpMeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /me", a.endpoint(a.requireViewer(a.getMeEndpoint)))
+	mux.HandleFunc("DELETE /me", a.endpoint(a.rateLimited(a.sessionLimiter, a.requireViewer(a.deleteMeEndpoint))))
 	mux.HandleFunc("PATCH /me", a.endpoint(a.requireViewer(a.patchMeEndpoint)))
 	mux.HandleFunc("PUT /me/avatar", a.endpoint(a.requireViewer(a.putAvatarEndpoint)))
 	mux.HandleFunc("DELETE /me/avatar", a.endpoint(a.requireViewer(a.deleteAvatarEndpoint)))
@@ -55,6 +56,39 @@ func (a *app) patchMeEndpoint(r *http.Request, viewer account.Viewer) (int, any)
 		return a.handleError(err)
 	}
 	return http.StatusOK, a.meResponse(r, me)
+}
+
+// deleteMeEndpoint permanently deletes the viewer's account, content and files.
+func (a *app) deleteMeEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
+	ctx := r.Context()
+
+	request, err := decodeJSONBody[account.DeleteMeRequest](r)
+	if err != nil {
+		return http.StatusBadRequest, ErrorResponse{Message: err.Error()}
+	}
+
+	hash, err := a.accountStore.GetPasswordHash(ctx, viewer.UUID)
+	if err != nil {
+		return a.handleError(err)
+	}
+	matches, err := account.VerifyPassword(request.Password, hash)
+	if err != nil {
+		return a.handleError(err)
+	}
+	if !matches {
+		return http.StatusUnauthorized, errInvalidCredentials
+	}
+
+	// Keys are read before the rows go: afterwards nothing says which files were theirs.
+	keys, err := a.accountStore.ListMediaKeys(ctx, viewer.UUID)
+	if err != nil {
+		return a.handleError(err)
+	}
+	if err := a.accountStore.DeleteAccount(ctx, viewer.UUID); err != nil {
+		return a.handleError(err)
+	}
+	a.deleteBlobs(ctx, keys...)
+	return http.StatusNoContent, nil
 }
 
 func (a *app) putAvatarEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
