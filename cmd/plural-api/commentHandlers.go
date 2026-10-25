@@ -34,7 +34,7 @@ func (a *app) getCommentsEndpoint(r *http.Request, viewer *account.Viewer) (int,
 		return a.handleError(err)
 	}
 
-	rows, err := a.socialStore.ListComments(ctx, postUUID, cursor, limit)
+	rows, err := a.socialStore.ListComments(ctx, postUUID, viewerUUID(viewer), cursor, limit)
 	if err != nil {
 		return a.handleError(err)
 	}
@@ -78,7 +78,7 @@ func (a *app) postCommentEndpoint(r *http.Request, viewer account.Viewer) (int, 
 	if err != nil {
 		return a.handleError(err)
 	}
-	created, err := a.socialStore.GetComment(ctx, commentUUID)
+	created, err := a.socialStore.GetComment(ctx, commentUUID, &viewer.UUID)
 	if err != nil {
 		return a.handleError(err)
 	}
@@ -93,8 +93,8 @@ func validateCreateCommentRequest(request social.CreateCommentRequest) map[strin
 	return failures
 }
 
-// deleteCommentEndpoint lets a comment's author, or the author of the post it
-// is on, remove it.
+// deleteCommentEndpoint lets a comment's author, the author of the post it is
+// on, or a moderator remove it.
 func (a *app) deleteCommentEndpoint(r *http.Request, viewer account.Viewer) (int, any) {
 	ctx := r.Context()
 
@@ -102,11 +102,11 @@ func (a *app) deleteCommentEndpoint(r *http.Request, viewer account.Viewer) (int
 	if !ok {
 		return http.StatusNotFound, errNotFound
 	}
-	comment, err := a.socialStore.GetComment(ctx, commentUUID)
+	comment, err := a.socialStore.GetComment(ctx, commentUUID, &viewer.UUID)
 	if err != nil {
 		return a.handleError(err)
 	}
-	if viewer.UUID != comment.Author.UUID && viewer.UUID != comment.PostAuthorUUID {
+	if viewer.UUID != comment.Author.UUID && viewer.UUID != comment.PostAuthorUUID && !account.IsModerator(viewer.Role) {
 		return http.StatusForbidden, ErrorResponse{Message: "you can't delete this comment", Type: errTypeForbidden}
 	}
 	if err := a.socialStore.SoftDeleteComment(ctx, commentUUID); err != nil {

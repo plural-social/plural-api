@@ -77,7 +77,7 @@ func Test_app_getCommentsEndpoint(t *testing.T) {
 	run("ListError", testCase{
 		path:      path,
 		postStore: &postStoreMock{GetPostStub: postFound},
-		socialStore: &socialStoreMock{ListCommentsStub: func(context.Context, uuid.UUID, pagination.Cursor, int) ([]social.Comment, error) {
+		socialStore: &socialStoreMock{ListCommentsStub: func(context.Context, uuid.UUID, *uuid.UUID, pagination.Cursor, int) ([]social.Comment, error) {
 			return nil, expect.ErrTest
 		}},
 		expectedStatus: http.StatusInternalServerError,
@@ -85,7 +85,7 @@ func Test_app_getCommentsEndpoint(t *testing.T) {
 	run("Success", testCase{
 		path:      path + "?limit=1",
 		postStore: &postStoreMock{GetPostStub: postFound},
-		socialStore: &socialStoreMock{ListCommentsStub: func(_ context.Context, postUUID uuid.UUID, _ pagination.Cursor, limit int) ([]social.Comment, error) {
+		socialStore: &socialStoreMock{ListCommentsStub: func(_ context.Context, postUUID uuid.UUID, _ *uuid.UUID, _ pagination.Cursor, limit int) ([]social.Comment, error) {
 			expect.Equal(t, postUUID, testPostUUID)
 			expect.Equal(t, limit, 1)
 			return []social.Comment{testComment(), testComment()}, nil
@@ -180,7 +180,7 @@ func Test_app_postCommentEndpoint(t *testing.T) {
 				expect.Equal(t, newComment, social.NewComment{PostUUID: testPostUUID, AccountUUID: testAccountUUID, Body: "nice one"})
 				return testCommentUUID, nil
 			},
-			GetCommentStub: func(context.Context, uuid.UUID) (social.Comment, error) { return testComment(), nil },
+			GetCommentStub: func(context.Context, uuid.UUID, *uuid.UUID) (social.Comment, error) { return testComment(), nil },
 		},
 		expectedStatus: http.StatusCreated,
 		expectedBody: map[string]any{
@@ -193,8 +193,8 @@ func Test_app_postCommentEndpoint(t *testing.T) {
 
 func Test_app_deleteCommentEndpoint(t *testing.T) {
 	path := "/comments/" + testCommentUUID.String()
-	commentBy := func(author, postAuthor uuid.UUID) func(context.Context, uuid.UUID) (social.Comment, error) {
-		return func(context.Context, uuid.UUID) (social.Comment, error) {
+	commentBy := func(author, postAuthor uuid.UUID) func(context.Context, uuid.UUID, *uuid.UUID) (social.Comment, error) {
+		return func(context.Context, uuid.UUID, *uuid.UUID) (social.Comment, error) {
 			c := testComment()
 			c.Author.UUID, c.PostAuthorUUID = author, postAuthor
 			return c, nil
@@ -207,6 +207,7 @@ func Test_app_deleteCommentEndpoint(t *testing.T) {
 
 	type testCase struct {
 		request        *http.Request
+		role           string
 		socialStore    *socialStoreMock
 		expectedStatus int
 	}
@@ -215,8 +216,11 @@ func Test_app_deleteCommentEndpoint(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Helper()
 			testCase.socialStore.T = t
+			if testCase.role == "" {
+				testCase.role = account.RoleUser
+			}
 			a := &app{
-				accountStore: &accountStoreMock{T: t, GetViewerStub: viewerStub},
+				accountStore: &accountStoreMock{T: t, GetViewerStub: viewerWithRole(testCase.role)},
 				socialStore:  testCase.socialStore,
 				logger:       zap.NewNop(),
 			}
@@ -232,7 +236,7 @@ func Test_app_deleteCommentEndpoint(t *testing.T) {
 	})
 	run("NotFound", testCase{
 		request: authedRequest(http.MethodDelete, path, ""),
-		socialStore: &socialStoreMock{GetCommentStub: func(context.Context, uuid.UUID) (social.Comment, error) {
+		socialStore: &socialStoreMock{GetCommentStub: func(context.Context, uuid.UUID, *uuid.UUID) (social.Comment, error) {
 			return social.Comment{}, postgres.ErrCommentNotFound
 		}},
 		expectedStatus: http.StatusNotFound,
@@ -254,6 +258,15 @@ func Test_app_deleteCommentEndpoint(t *testing.T) {
 		request: authedRequest(http.MethodDelete, path, ""),
 		socialStore: &socialStoreMock{
 			GetCommentStub:        commentBy(otherAccountUUID, testAccountUUID),
+			SoftDeleteCommentStub: deleteOK,
+		},
+		expectedStatus: http.StatusNoContent,
+	})
+	run("ByModerator", testCase{
+		request: authedRequest(http.MethodDelete, path, ""),
+		role:    account.RoleModerator,
+		socialStore: &socialStoreMock{
+			GetCommentStub:        commentBy(otherAccountUUID, otherAccountUUID),
 			SoftDeleteCommentStub: deleteOK,
 		},
 		expectedStatus: http.StatusNoContent,

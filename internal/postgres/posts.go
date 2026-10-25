@@ -36,9 +36,25 @@ JOIN account a ON a.uuid = p.account_uuid
 JOIN media m ON m.uuid = p.media_uuid
 `
 
-// postVisible is the WHERE part for visibility rules 1 and 2 in
-// 01-architecture.md: not deleted, and media ready unless the viewer is the author.
-const postVisible = `p.deleted_at IS NULL AND (m.status = 'ready' OR p.account_uuid = $1)`
+// postVisible is the WHERE part for the visibility rules in 01-architecture.md:
+// not deleted, media ready unless the viewer is the author, author not
+// suspended, and no block between viewer and author.
+var postVisible = `p.deleted_at IS NULL AND (m.status = 'ready' OR p.account_uuid = $1)
+	AND a.suspended_at IS NULL AND ` + notBlockedByViewer("p.account_uuid")
+
+// feedVisible is like postVisible, but media must be ready for everyone:
+// feeds only show finished posts, even to their author.
+var feedVisible = `p.deleted_at IS NULL AND m.status = 'ready'
+	AND a.suspended_at IS NULL AND ` + notBlockedByViewer("p.account_uuid")
+
+// notBlockedByViewer returns SQL that is true when there is no block in either
+// direction between the viewer ($1) and the account in column. A NULL viewer
+// (anonymous) matches no block, so anonymous readers see everything else.
+func notBlockedByViewer(column string) string {
+	return `NOT EXISTS (SELECT 1 FROM block b WHERE
+		(b.blocker_uuid = $1 AND b.blocked_uuid = ` + column + `) OR
+		(b.blocker_uuid = ` + column + ` AND b.blocked_uuid = $1))`
+}
 
 // scanner is satisfied by *sql.Row and *sql.Rows.
 type scanner interface {

@@ -30,11 +30,12 @@ type app struct {
 	logger *zap.Logger
 
 	// Stores
-	accountStore accountStore
-	mediaStore   mediaStore
-	postStore    postStore
-	socialStore  socialStore
-	blobStore    blobStore
+	accountStore    accountStore
+	mediaStore      mediaStore
+	postStore       postStore
+	socialStore     socialStore
+	moderationStore moderationStore
+	blobStore       blobStore
 
 	// Configuration
 	corsOrigins       []string
@@ -52,6 +53,7 @@ type app struct {
 	sessionLimiter *ipRateLimiter
 	signupLimiter  *ipRateLimiter
 	uploadLimiter  *ipRateLimiter
+	reportLimiter  *ipRateLimiter
 }
 
 func main() {
@@ -107,11 +109,12 @@ func main() {
 	a := &app{
 		logger: logger,
 
-		accountStore: store,
-		mediaStore:   store,
-		postStore:    store,
-		socialStore:  store,
-		blobStore:    blobStore,
+		accountStore:    store,
+		mediaStore:      store,
+		postStore:       store,
+		socialStore:     store,
+		moderationStore: store,
+		blobStore:       blobStore,
 
 		corsOrigins:       splitOrigins(*corsOrigins),
 		instanceDomain:    *instanceDomain,
@@ -126,6 +129,7 @@ func main() {
 		sessionLimiter: newIPRateLimiter(6*time.Second, 10),
 		signupLimiter:  newIPRateLimiter(12*time.Minute, 5),
 		uploadLimiter:  newIPRateLimiter(10*time.Second, 30),
+		reportLimiter:  newIPRateLimiter(6*time.Second, 10),
 	}
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", *port),
@@ -175,6 +179,7 @@ func (a *app) routes() http.Handler {
 	a.setUpFeedRoutes(mux)
 	a.setUpLikeRoutes(mux)
 	a.setUpCommentRoutes(mux)
+	a.setUpModerationRoutes(mux)
 	return a.recoverPanics(a.logRequests(a.cors(mux)))
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/plural-social/plural-api/internal/account"
 	"github.com/plural-social/plural-api/internal/blob"
 	"github.com/plural-social/plural-api/internal/media"
+	"github.com/plural-social/plural-api/internal/moderation"
 	"github.com/plural-social/plural-api/internal/pagination"
 	"github.com/plural-social/plural-api/internal/post"
 	"github.com/plural-social/plural-api/internal/social"
@@ -28,6 +29,8 @@ type accountStore interface {
 	GetAccountUUID(ctx context.Context, username string) (uuid.UUID, error)
 	SetAvatar(ctx context.Context, accountUUID, mediaUUID uuid.UUID) error
 	RemoveAvatar(ctx context.Context, accountUUID uuid.UUID) error
+	GetUserSummary(ctx context.Context, accountUUID uuid.UUID) (account.UserSummary, error)
+	GetAccountRole(ctx context.Context, accountUUID uuid.UUID) (string, error)
 }
 
 //go:generate go tool mock -o mediaStore_mock.go mediaStore
@@ -60,7 +63,24 @@ type socialStore interface {
 	LikePost(ctx context.Context, postUUID, accountUUID uuid.UUID) error
 	UnlikePost(ctx context.Context, postUUID, accountUUID uuid.UUID) error
 	InsertComment(ctx context.Context, newComment social.NewComment) (uuid.UUID, error)
-	GetComment(ctx context.Context, commentUUID uuid.UUID) (social.Comment, error)
-	ListComments(ctx context.Context, postUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]social.Comment, error)
+	GetComment(ctx context.Context, commentUUID uuid.UUID, viewerUUID *uuid.UUID) (social.Comment, error)
+	ListComments(ctx context.Context, postUUID uuid.UUID, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]social.Comment, error)
 	SoftDeleteComment(ctx context.Context, commentUUID uuid.UUID) error
+}
+
+//go:generate go tool mock -o moderationStore_mock.go moderationStore
+type moderationStore interface {
+	BlockAccount(ctx context.Context, blockerUUID, blockedUUID uuid.UUID) error
+	UnblockAccount(ctx context.Context, blockerUUID, blockedUUID uuid.UUID) error
+	IsBlockedEitherWay(ctx context.Context, a, b uuid.UUID) (bool, error)
+	ListBlocks(ctx context.Context, blockerUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]moderation.BlockedAccount, error)
+	InsertReport(ctx context.Context, report moderation.NewReport) (uuid.UUID, error)
+	GetReport(ctx context.Context, reportUUID uuid.UUID) (moderation.Report, error)
+	ListReports(ctx context.Context, status string, cursor pagination.Cursor, limit int) ([]moderation.Report, error)
+	ResolveReports(ctx context.Context, res moderation.Resolution) error
+	GetContentAuthor(ctx context.Context, targetType string, targetUUID uuid.UUID) (uuid.UUID, error)
+	RemovePost(ctx context.Context, postUUID uuid.UUID) (media.Media, error)
+	SoftDeleteComment(ctx context.Context, commentUUID uuid.UUID) error
+	SuspendAccount(ctx context.Context, accountUUID uuid.UUID) error
+	UnsuspendAccount(ctx context.Context, accountUUID uuid.UUID) error
 }

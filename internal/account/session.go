@@ -13,14 +13,22 @@ import (
 const (
 	SessionLifetime = 90 * 24 * time.Hour
 
-	RoleUser = "user"
+	RoleUser      = "user"
+	RoleModerator = "moderator"
+	RoleAdmin     = "admin"
 )
 
 const (
 	ErrTypeUnauthenticated    = "unauthenticated"
 	ErrTypeInvalidCredentials = "invalidCredentials"
 	ErrTypeRateLimited        = "rateLimited"
+	ErrTypeAccountSuspended   = "accountSuspended"
 )
+
+// IsModerator reports whether the role can moderate (moderator or admin).
+func IsModerator(role string) bool {
+	return role == RoleModerator || role == RoleAdmin
+}
 
 // NewSessionToken returns a random token for the client and the SHA-256 hash
 // to store. The token is 32 bytes from crypto/rand, base64url without padding.
@@ -43,7 +51,7 @@ func HashSessionToken(token string) []byte {
 type Viewer struct {
 	UUID     uuid.UUID
 	Username string
-	Role     string // always RoleUser until F13
+	Role     string
 }
 
 type NewSession struct {
@@ -56,6 +64,7 @@ type NewSession struct {
 type Credentials struct {
 	AccountUUID  uuid.UUID
 	PasswordHash string
+	SuspendedAt  *time.Time
 }
 
 type CreateSessionRequest struct {

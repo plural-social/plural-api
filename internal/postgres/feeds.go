@@ -10,15 +10,12 @@ import (
 	"github.com/plural-social/plural-api/internal/post"
 )
 
-// Feeds are stricter than profiles: media must be ready for everyone,
-// including the author, because feeds only show finished posts.
-
 // ListFollowingFeed returns posts by the viewer and the people they follow,
 // newest first, up to limit+1 rows.
 func (s *Store) ListFollowingFeed(ctx context.Context, viewerUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error) {
 	cursorTime, cursorUUID := cursorArgs(cursor)
 	rows, err := s.db.QueryContext(ctx, postSelect+`
-		WHERE p.deleted_at IS NULL AND m.status = 'ready'
+		WHERE `+feedVisible+`
 			AND (p.account_uuid = $1
 				OR p.account_uuid IN (SELECT followee_uuid FROM follow WHERE follower_uuid = $1))
 			AND ($2::timestamptz IS NULL OR (p.created_at, p.uuid) < ($2, $3))
@@ -33,11 +30,11 @@ func (s *Store) ListFollowingFeed(ctx context.Context, viewerUUID uuid.UUID, cur
 }
 
 // ListExploreFeed returns every ready post on the instance, newest first, up
-// to limit+1 rows. viewerUUID only fills likedByMe.
+// to limit+1 rows.
 func (s *Store) ListExploreFeed(ctx context.Context, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]post.Post, error) {
 	cursorTime, cursorUUID := cursorArgs(cursor)
 	rows, err := s.db.QueryContext(ctx, postSelect+`
-		WHERE p.deleted_at IS NULL AND m.status = 'ready'
+		WHERE `+feedVisible+`
 			AND ($2::timestamptz IS NULL OR (p.created_at, p.uuid) < ($2, $3))
 		ORDER BY p.created_at DESC, p.uuid DESC
 		LIMIT $4`,

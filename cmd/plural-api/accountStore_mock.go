@@ -39,6 +39,10 @@ type accountStoreMock struct {
 	SetAvatarCalled      int32
 	RemoveAvatarStub     func(ctx context.Context, accountUUID uuid.UUID) error
 	RemoveAvatarCalled   int32
+	GetUserSummaryStub   func(ctx context.Context, accountUUID uuid.UUID) (account.UserSummary, error)
+	GetUserSummaryCalled int32
+	GetAccountRoleStub   func(ctx context.Context, accountUUID uuid.UUID) (string, error)
+	GetAccountRoleCalled int32
 }
 
 // Verify that *accountStoreMock implements accountStore.
@@ -198,4 +202,30 @@ func (m *accountStoreMock) RemoveAvatar(ctx context.Context, accountUUID uuid.UU
 		panic("RemoveAvatar unimplemented")
 	}
 	return m.RemoveAvatarStub(ctx, accountUUID)
+}
+
+// GetUserSummary is a stub for the accountStore.GetUserSummary
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetUserSummary(ctx context.Context, accountUUID uuid.UUID) (account.UserSummary, error) {
+	atomic.AddInt32(&m.GetUserSummaryCalled, 1)
+	if m.GetUserSummaryStub == nil {
+		if m.T != nil {
+			m.T.Error("GetUserSummaryStub is nil")
+		}
+		panic("GetUserSummary unimplemented")
+	}
+	return m.GetUserSummaryStub(ctx, accountUUID)
+}
+
+// GetAccountRole is a stub for the accountStore.GetAccountRole
+// method that records the number of times it has been called.
+func (m *accountStoreMock) GetAccountRole(ctx context.Context, accountUUID uuid.UUID) (string, error) {
+	atomic.AddInt32(&m.GetAccountRoleCalled, 1)
+	if m.GetAccountRoleStub == nil {
+		if m.T != nil {
+			m.T.Error("GetAccountRoleStub is nil")
+		}
+		panic("GetAccountRole unimplemented")
+	}
+	return m.GetAccountRoleStub(ctx, accountUUID)
 }

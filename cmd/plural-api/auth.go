@@ -56,6 +56,28 @@ func (a *app) optionalViewer(h optionalViewerHandler) handler {
 	}
 }
 
+var errForbidden = ErrorResponse{Message: "forbidden", Type: errTypeForbidden}
+
+// requireModerator returns 403 type forbidden unless the viewer is a moderator or admin.
+func (a *app) requireModerator(h viewerHandler) handler {
+	return a.requireViewer(func(r *http.Request, viewer account.Viewer) (int, any) {
+		if !account.IsModerator(viewer.Role) {
+			return http.StatusForbidden, errForbidden
+		}
+		return h(r, viewer)
+	})
+}
+
+// requireAdmin returns 403 type forbidden unless the viewer is an admin.
+func (a *app) requireAdmin(h viewerHandler) handler {
+	return a.requireViewer(func(r *http.Request, viewer account.Viewer) (int, any) {
+		if viewer.Role != account.RoleAdmin {
+			return http.StatusForbidden, errForbidden
+		}
+		return h(r, viewer)
+	})
+}
+
 func (a *app) withViewer(r *http.Request, token string, h viewerHandler) (int, any) {
 	viewer, err := a.accountStore.GetViewer(r.Context(), account.HashSessionToken(token))
 	if errors.Is(err, postgres.ErrSessionNotFound) {

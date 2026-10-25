@@ -12,11 +12,11 @@ import (
 func (s *Store) GetCredentials(ctx context.Context, login string) (account.Credentials, error) {
 	var credentials account.Credentials
 	err := s.db.QueryRowContext(ctx, `
-		SELECT uuid, password_hash
+		SELECT uuid, password_hash, suspended_at
 		FROM account
 		WHERE username = $1 OR email = $1`,
 		login,
-	).Scan(&credentials.AccountUUID, &credentials.PasswordHash)
+	).Scan(&credentials.AccountUUID, &credentials.PasswordHash, &credentials.SuspendedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return account.Credentials{}, ErrAccountNotFound
 	}
@@ -42,7 +42,8 @@ func (s *Store) InsertSession(ctx context.Context, session account.NewSession) e
 }
 
 func (s *Store) GetViewer(ctx context.Context, tokenHash []byte) (account.Viewer, error) {
-	viewer := account.Viewer{Role: account.RoleUser}
+	// Suspended accounts never resolve to a viewer, so their tokens stop working at once.
+	var viewer account.Viewer
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE session s
 		SET last_used_at = NOW()
@@ -50,9 +51,10 @@ func (s *Store) GetViewer(ctx context.Context, tokenHash []byte) (account.Viewer
 		WHERE s.token_hash = $1
 			AND s.expires_at > NOW()
 			AND a.uuid = s.account_uuid
-		RETURNING a.uuid, a.username`,
+			AND a.suspended_at IS NULL
+		RETURNING a.uuid, a.username, a.role`,
 		tokenHash,
-	).Scan(&viewer.UUID, &viewer.Username)
+	).Scan(&viewer.UUID, &viewer.Username, &viewer.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return account.Viewer{}, ErrSessionNotFound
 	}

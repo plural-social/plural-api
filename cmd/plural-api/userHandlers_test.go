@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/plural-social/plural-api/internal/account"
+	"github.com/plural-social/plural-api/internal/moderation"
 	"github.com/plural-social/plural-api/internal/pagination"
 	"github.com/plural-social/plural-api/internal/post"
 	"github.com/plural-social/plural-api/internal/postgres"
@@ -204,11 +205,12 @@ func Test_app_putFollowEndpoint(t *testing.T) {
 	}
 
 	type testCase struct {
-		request        *http.Request
-		accountStore   *accountStoreMock
-		socialStore    *socialStoreMock
-		expectedStatus int
-		expectedBody   map[string]any
+		request         *http.Request
+		accountStore    *accountStoreMock
+		socialStore     *socialStoreMock
+		moderationStore *moderationStoreMock
+		expectedStatus  int
+		expectedBody    map[string]any
 	}
 	run := func(name string, testCase testCase) {
 		t.Helper()
@@ -217,7 +219,16 @@ func Test_app_putFollowEndpoint(t *testing.T) {
 			testCase.accountStore.T = t
 			testCase.accountStore.GetViewerStub = viewerStub
 			testCase.socialStore.T = t
-			a := &app{accountStore: testCase.accountStore, socialStore: testCase.socialStore, logger: zap.NewNop()}
+			if testCase.moderationStore == nil {
+				testCase.moderationStore = &moderationStoreMock{IsBlockedEitherWayStub: notBlocked}
+			}
+			testCase.moderationStore.T = t
+			a := &app{
+				accountStore:    testCase.accountStore,
+				socialStore:     testCase.socialStore,
+				moderationStore: testCase.moderationStore,
+				logger:          zap.NewNop(),
+			}
 			status, body := serveJSON(t, a, testCase.request)
 			expect.Equal(t, status, testCase.expectedStatus)
 			expect.Equal(t, body, testCase.expectedBody)
@@ -253,6 +264,18 @@ func Test_app_putFollowEndpoint(t *testing.T) {
 		socialStore:    &socialStoreMock{},
 		expectedStatus: http.StatusUnprocessableEntity,
 		expectedBody:   map[string]any{"error": "you can't follow yourself", "type": social.ErrTypeCannotFollowSelf},
+	})
+	run("Blocked", testCase{
+		request:      authedRequest(http.MethodPut, "/users/bob/follow", ""),
+		accountStore: &accountStoreMock{GetAccountUUIDStub: byUsername(followee)},
+		socialStore:  &socialStoreMock{},
+		moderationStore: &moderationStoreMock{IsBlockedEitherWayStub: func(_ context.Context, a, b uuid.UUID) (bool, error) {
+			expect.Equal(t, a, testAccountUUID)
+			expect.Equal(t, b, followee)
+			return true, nil
+		}},
+		expectedStatus: http.StatusUnprocessableEntity,
+		expectedBody:   map[string]any{"error": "you can't follow this account", "type": moderation.ErrTypeBlocked},
 	})
 	run("FollowError", testCase{
 		request:      authedRequest(http.MethodPut, "/users/bob/follow", ""),

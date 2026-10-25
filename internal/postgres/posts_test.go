@@ -27,8 +27,13 @@ func insertTestMedia(t *testing.T, store *Store, owner uuid.UUID, status string)
 // insertTestPost creates a post by owner on fresh media of the given status.
 func insertTestPost(t *testing.T, store *Store, owner uuid.UUID, status string) uuid.UUID {
 	t.Helper()
-	m := insertTestMedia(t, store, owner, status)
-	postUUID, err := store.InsertPost(context.Background(), post.NewPost{AccountUUID: owner, MediaUUID: m.UUID, Caption: "c"})
+	return insertTestPostOn(t, store, owner, insertTestMedia(t, store, owner, status).UUID, "c")
+}
+
+// insertTestPostOn creates a post by owner on existing media.
+func insertTestPostOn(t *testing.T, store *Store, owner, mediaUUID uuid.UUID, caption string) uuid.UUID {
+	t.Helper()
+	postUUID, err := store.InsertPost(context.Background(), post.NewPost{AccountUUID: owner, MediaUUID: mediaUUID, Caption: caption})
 	expect.ErrorNil(t, err)
 	return postUUID
 }

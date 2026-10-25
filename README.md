@@ -82,6 +82,13 @@ Feeds only contain posts whose media is ready, newest first, with the same `?lim
 | `DELETE` | `/comments/{uuid}` | Delete a comment (its author or the post's author) |
 
 Post responses include `likeCount`, `commentCount` and `likedByMe`.
+| `PUT` | `/users/{username}/block` | Block a user. Removes follows both ways; you stop seeing each other's posts and comments |
+| `DELETE` | `/users/{username}/block` | Unblock |
+| `GET` | `/me/blocks` | Accounts you blocked |
+| `POST` | `/reports` | Report: `{"targetType":"post\|comment\|account","targetUuid","reason","details"}`. Rate limited |
+| `GET` | `/admin/reports` | Moderators: reports by `?status=open\|resolved\|dismissed` (default `open`), with a preview of the target |
+| `POST` | `/admin/reports/{uuid}/resolve` | Moderators: `{"action":"dismiss\|removeContent\|suspendAccount","note"}` |
+| `POST` | `/admin/accounts/{uuid}/unsuspend` | Admins: lift a suspension |
 
 ```bash
 curl -s -X POST localhost:4100/media -H "Authorization: Bearer $TOKEN" \
@@ -93,3 +100,21 @@ curl -s -X POST localhost:4100/media -H "Authorization: Bearer $TOKEN" \
 Files live in any S3-compatible service. Development uses SeaweedFS (compose).
 Keys: `media/<uuid>/display.jpg`, `media/<uuid>/thumb.jpg`. Keys never change
 content, so `/files` responses are cached for a year.
+
+## Moderation
+
+Roles are `user`, `moderator` and `admin`. Moderators review reports, remove
+posts and comments, and suspend users. Only admins suspend moderators or lift
+suspensions; nobody suspends an admin through the API.
+
+A suspended account cannot log in, its sessions end at once, and its profile,
+posts and comments are hidden from everyone.
+
+Make the first admin directly in the database:
+
+```bash
+docker compose exec postgres psql -U plural -c "UPDATE account SET role = 'admin' WHERE username = 'alice'"
+```
+
+Roles are read from the database on every request, so the change applies
+right away with no new login.

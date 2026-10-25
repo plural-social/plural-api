@@ -72,7 +72,8 @@ func (a *app) handleError(err error) (int, any) {
 	case errors.Is(err, postgres.ErrAccountNotFound),
 		errors.Is(err, postgres.ErrMediaNotFound),
 		errors.Is(err, postgres.ErrPostNotFound),
-		errors.Is(err, postgres.ErrCommentNotFound):
+		errors.Is(err, postgres.ErrCommentNotFound),
+		errors.Is(err, postgres.ErrReportNotFound):
 		return http.StatusNotFound, errNotFound
 	case errors.Is(err, postgres.ErrMediaAlreadyUsed):
 		return http.StatusConflict, ErrorResponse{Message: "media already used by another post", Type: post.ErrTypeMediaAlreadyUsed}

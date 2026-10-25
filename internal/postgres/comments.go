@@ -52,8 +52,12 @@ func (s *Store) InsertComment(ctx context.Context, newComment social.NewComment)
 	return commentUUID, nil
 }
 
-func (s *Store) GetComment(ctx context.Context, commentUUID uuid.UUID) (social.Comment, error) {
-	c, err := scanComment(s.db.QueryRowContext(ctx, commentSelect+`WHERE c.deleted_at IS NULL AND c.uuid = $1`, commentUUID))
+// commentVisible hides deleted comments, comments by suspended authors and
+// comments across a block with the viewer ($1).
+var commentVisible = `c.deleted_at IS NULL AND a.suspended_at IS NULL AND ` + notBlockedByViewer("c.account_uuid")
+
+func (s *Store) GetComment(ctx context.Context, commentUUID uuid.UUID, viewerUUID *uuid.UUID) (social.Comment, error) {
+	c, err := scanComment(s.db.QueryRowContext(ctx, commentSelect+`WHERE `+commentVisible+` AND c.uuid = $2`, viewerUUID, commentUUID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return social.Comment{}, ErrCommentNotFound
 	}
@@ -64,14 +68,14 @@ func (s *Store) GetComment(ctx context.Context, commentUUID uuid.UUID) (social.C
 }
 
 // ListComments returns up to limit+1 rows, newest first, strictly after cursor.
-func (s *Store) ListComments(ctx context.Context, postUUID uuid.UUID, cursor pagination.Cursor, limit int) ([]social.Comment, error) {
+func (s *Store) ListComments(ctx context.Context, postUUID uuid.UUID, viewerUUID *uuid.UUID, cursor pagination.Cursor, limit int) ([]social.Comment, error) {
 	cursorTime, cursorUUID := cursorArgs(cursor)
 	rows, err := s.db.QueryContext(ctx, commentSelect+`
-		WHERE c.deleted_at IS NULL AND c.post_uuid = $1
-			AND ($2::timestamptz IS NULL OR (c.created_at, c.uuid) < ($2, $3))
+		WHERE `+commentVisible+` AND c.post_uuid = $2
+			AND ($3::timestamptz IS NULL OR (c.created_at, c.uuid) < ($3, $4))
 		ORDER BY c.created_at DESC, c.uuid DESC
-		LIMIT $4`,
-		postUUID, cursorTime, cursorUUID, limit+1,
+		LIMIT $5`,
+		viewerUUID, postUUID, cursorTime, cursorUUID, limit+1,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing comments: %w", err)

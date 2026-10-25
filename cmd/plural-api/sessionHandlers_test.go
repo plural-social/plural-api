@@ -104,6 +104,24 @@ func Test_app_postSessionEndpoint(t *testing.T) {
 		expectedStatus: http.StatusUnauthorized,
 		expectedBody:   invalidCredentials,
 	})
+	suspended := credentials
+	suspended.SuspendedAt = &testCreatedAt
+	run("SuspendedWrongPassword", testCase{
+		body: `{"login":"alice","password":"wrong"}`,
+		accountStore: &accountStoreMock{
+			GetCredentialsStub: func(context.Context, string) (account.Credentials, error) { return suspended, nil },
+		},
+		expectedStatus: http.StatusUnauthorized,
+		expectedBody:   invalidCredentials,
+	})
+	run("Suspended", testCase{
+		body: validBody,
+		accountStore: &accountStoreMock{
+			GetCredentialsStub: func(context.Context, string) (account.Credentials, error) { return suspended, nil },
+		},
+		expectedStatus: http.StatusForbidden,
+		expectedBody:   map[string]any{"error": "this account is suspended", "type": account.ErrTypeAccountSuspended},
+	})
 	run("InsertSessionError", testCase{
 		body: validBody,
 		accountStore: &accountStoreMock{

@@ -53,14 +53,14 @@ const (
 )
 
 func (s *Store) GetMe(ctx context.Context, accountUUID uuid.UUID) (account.Me, error) {
-	me := account.Me{Role: account.RoleUser}
+	var me account.Me
 	err := s.db.QueryRowContext(ctx, `
-		SELECT a.uuid, a.username, a.display_name, `+avatarColumn+`, a.email, a.bio, a.created_at
+		SELECT a.uuid, a.username, a.display_name, `+avatarColumn+`, a.email, a.bio, a.role, a.created_at
 		FROM account a
 		`+avatarJoin+`
 		WHERE a.uuid = $1`,
 		accountUUID,
-	).Scan(&me.UUID, &me.Username, &me.DisplayName, &me.AvatarKey, &me.Email, &me.Bio, &me.CreatedAt)
+	).Scan(&me.UUID, &me.Username, &me.DisplayName, &me.AvatarKey, &me.Email, &me.Bio, &me.Role, &me.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return account.Me{}, ErrAccountNotFound
 	}
@@ -105,13 +105,14 @@ func (s *Store) GetProfile(ctx context.Context, username string, viewerUUID *uui
 				AND (m.status = 'ready' OR p.account_uuid = $2)) AS post_count,
 			(SELECT COUNT(*) FROM follow f WHERE f.followee_uuid = a.uuid) AS follower_count,
 			(SELECT COUNT(*) FROM follow f WHERE f.follower_uuid = a.uuid) AS following_count,
-			EXISTS (SELECT 1 FROM follow f WHERE f.follower_uuid = $2 AND f.followee_uuid = a.uuid) AS is_following
+			EXISTS (SELECT 1 FROM follow f WHERE f.follower_uuid = $2 AND f.followee_uuid = a.uuid) AS is_following,
+			EXISTS (SELECT 1 FROM block b WHERE b.blocker_uuid = $2 AND b.blocked_uuid = a.uuid) AS is_blocked
 		FROM account a
 		`+avatarJoin+`
-		WHERE a.username = $1`,
+		WHERE a.username = $1 AND a.suspended_at IS NULL`,
 		username, viewerUUID,
 	).Scan(&profile.UUID, &profile.Username, &profile.DisplayName, &profile.AvatarKey, &profile.Bio, &profile.CreatedAt,
-		&profile.PostCount, &profile.FollowerCount, &profile.FollowingCount, &profile.IsFollowing)
+		&profile.PostCount, &profile.FollowerCount, &profile.FollowingCount, &profile.IsFollowing, &profile.IsBlocked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return account.Profile{}, ErrAccountNotFound
 	}
@@ -169,4 +170,35 @@ func (s *Store) RemoveAvatar(ctx context.Context, accountUUID uuid.UUID) error {
 		return fmt.Errorf("removing avatar: %w", err)
 	}
 	return nil
+}
+
+// GetUserSummary returns an account that is not suspended.
+func (s *Store) GetUserSummary(ctx context.Context, accountUUID uuid.UUID) (account.UserSummary, error) {
+	var summary account.UserSummary
+	err := s.db.QueryRowContext(ctx, `
+		SELECT a.uuid, a.username, a.display_name, `+avatarColumn+`
+		FROM account a
+		`+avatarJoin+`
+		WHERE a.uuid = $1 AND a.suspended_at IS NULL`,
+		accountUUID,
+	).Scan(&summary.UUID, &summary.Username, &summary.DisplayName, &summary.AvatarKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		return account.UserSummary{}, ErrAccountNotFound
+	}
+	if err != nil {
+		return account.UserSummary{}, fmt.Errorf("getting user summary: %w", err)
+	}
+	return summary, nil
+}
+
+func (s *Store) GetAccountRole(ctx context.Context, accountUUID uuid.UUID) (string, error) {
+	var role string
+	err := s.db.QueryRowContext(ctx, `SELECT role FROM account WHERE uuid = $1`, accountUUID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrAccountNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("getting account role: %w", err)
+	}
+	return role, nil
 }

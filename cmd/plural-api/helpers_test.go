@@ -104,3 +104,12 @@ func testPostJSON() map[string]any {
 		},
 	}
 }
+
+func notBlocked(context.Context, uuid.UUID, uuid.UUID) (bool, error) { return false, nil }
+
+// viewerWithRole returns a GetViewer stub resolving any token to alice with role.
+func viewerWithRole(role string) func(context.Context, []byte) (account.Viewer, error) {
+	return func(context.Context, []byte) (account.Viewer, error) {
+		return account.Viewer{UUID: testAccountUUID, Username: "alice", Role: role}, nil
+	}
+}

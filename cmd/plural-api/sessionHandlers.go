@@ -55,6 +55,11 @@ func (a *app) postSessionEndpoint(r *http.Request) (int, any) {
 	if !matches {
 		return http.StatusUnauthorized, errInvalidCredentials
 	}
+	// Checked only after the password: a wrong password on a suspended account
+	// must look like any other wrong password.
+	if credentials.SuspendedAt != nil {
+		return http.StatusForbidden, ErrorResponse{Message: "this account is suspended", Type: account.ErrTypeAccountSuspended}
+	}
 
 	token, tokenHash, err := account.NewSessionToken()
 	if err != nil {

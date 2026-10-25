@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/plural-social/plural-api/internal/account"
+	"github.com/plural-social/plural-api/internal/moderation"
 	"github.com/plural-social/plural-api/internal/social"
 )
 
@@ -77,6 +78,13 @@ func (a *app) putFollowEndpoint(r *http.Request, viewer account.Viewer) (int, an
 			Message: "you can't follow yourself",
 			Type:    social.ErrTypeCannotFollowSelf,
 		}
+	}
+	blocked, err := a.moderationStore.IsBlockedEitherWay(r.Context(), viewer.UUID, followeeUUID)
+	if err != nil {
+		return a.handleError(err)
+	}
+	if blocked {
+		return http.StatusUnprocessableEntity, ErrorResponse{Message: "you can't follow this account", Type: moderation.ErrTypeBlocked}
 	}
 	if err := a.socialStore.Follow(r.Context(), viewer.UUID, followeeUUID); err != nil {
 		return a.handleError(err)

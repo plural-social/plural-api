@@ -109,7 +109,7 @@ func Test_Store_avatar(t *testing.T) {
 
 		commentUUID, err := store.InsertComment(ctx, social.NewComment{PostUUID: postUUID, AccountUUID: owner.UUID, Body: "hi"})
 		expect.ErrorNil(t, err)
-		comment, err := store.GetComment(ctx, commentUUID)
+		comment, err := store.GetComment(ctx, commentUUID, nil)
 		expect.ErrorNil(t, err)
 		expect.Equal(t, comment.Author.AvatarKey, avatar.ThumbnailKey)
 	})
